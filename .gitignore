@@ -17,3 +17,14 @@ POPS.ELF
 IOPRP252.IMG
 POPS.PAK
 POPS_IOX.PAK
+
+# Local investigation material. Publish implementation source only.
+/*.md
+/compatibility/
+/tests/
+/tools/
+/diagnostics/
+/test-data/
+/fixtures/
+/captures/
+/logs/
