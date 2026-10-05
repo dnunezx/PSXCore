@@ -1,0 +1,13 @@
+output/
+private/
+__pycache__/
+*.pyc
+*.p2s
+*.bin
+*.elf
+*.vcd
+*.raw
+*.log
+*.map
+*.o
+*.exe

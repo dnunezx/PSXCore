@@ -1,7 +1,15 @@
 EE_BIN = psxcore-runtime-bootstrap.elf
-EE_OBJS = main.o transfer.o hooks.o boot_elf.o boot_sha256.o compat.o launch.o patch.o
+.DEFAULT_GOAL := all
+EE_OBJS = main.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o
 EE_INCS = -I../../include
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
+NP_MEMORY_ACCESS_ADAPTER ?= 0
+NP_MEMORY_ACCESS_TRACE ?= 0
+EE_CFLAGS += -DNP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER)
+EE_CFLAGS += -DNP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
+memoryaccess.o: EE_CFLAGS += -G0 -fno-jump-tables
+memoryaccess_asm.o: memoryaccess.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_LIBS = -liopreboot -lpatches -ldebug
 EE_LINKFILE = linkfile
 EE_LDFLAGS = -Wl,-Map=runtime.map

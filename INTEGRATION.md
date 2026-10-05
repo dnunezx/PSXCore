@@ -12,6 +12,7 @@ Headers under `include/` expose:
 - `psxcore_boot.h`: full runtime-layout validation and SHA-256 helpers.
 - `psxcore_launch.h`: version-2 native-partition launch request validation and argument construction.
 - `psxcore_compat.h`: independent compatibility overrides and effective profile/capability resolution.
+- `psxcore_runtime.h`: shared, guarded POPS core corrections, independent of game compatibility options.
 - `psxcore_patch.h`: bounded, transactional patch-set construction and application.
 
 The existing `np_`, `Np`, and `NP_` C identifiers and numeric request magic are preserved to avoid changing validated layouts. Public header names and produced artifacts use PSXCore. C++ callers should include the C headers inside an `extern "C"` block.
@@ -83,7 +84,7 @@ Resolution order is baseline, matching experimental profile, then Custom overrid
 | `NP_FIX_LICENSE` | Guarded adaptation of an existing firmware license-string slot, requiring the existing native-sector fingerprint. Implemented experimentally for both platform values; not a general region fix or a hardware compatibility claim. |
 | `NP_FIX_READBACK` | Restores a native readback DMA descriptor after FIFO writes. Available only for the PCSX2 environment; console requests reject attempts to enable it. |
 
-Revision 1 contains one automatic profile: the exact previously tested converted US Spyro image with serial `SCUS_942.28` and its full native-image SHA-256, under PCSX2. Unknown identities and console requests receive baseline behavior. Custom can disable either fix or enable an implemented platform capability. These two independent fixes currently have no declared dependency on each other. There are no implemented disc-read, controller, overclock, frame-skip, or audio-speed controls.
+Revision 3 contains the exact tested converted US Spyro and Doom images, identified by serial plus full native-image SHA-256, under PCSX2. Each selects optional license/readback adapters. Texture wrapping moved into the [shared POPS core correction](RUNTIME-CORRECTIONS.md), applied independently of game identity, platform value and compatibility mode. Its former option/bit 4 is rejected and reserved. Default still receives core corrections; Custom overrides only optional fixes. Generated C tables compile into the library/bootstrap; runtime JSON loading is not implemented. Unknown identities and console requests receive baseline behavior including core corrections. `NpCompatResult.game_name` and `.disc_revision` describe a catalog match; unmatched identities return null pointers. The serialized request remains 224 bytes. No timing or overclock fix is implemented.
 
 `options.diagnostics = 0` suppresses optional resident interface trace output. Bootstrap configuration summaries, rejection reasons, and fatal initialization/save errors remain available. Startup logs report the original selected mode and actual prepared patch count, as well as the effective fixes for native requests.
 
@@ -101,7 +102,9 @@ No partition creation, save migration, retained backup history, capacity checks,
 
 ## Staged patches
 
-Start with a zero-initialized `NpPatchSet`. Add bounded changes with `np_patch_add`, then call `np_patch_apply` once on the staged image after checking the runtime fingerprint and ELF layout. Application validates every expected byte, file/segment bound, and virtual/file overlap before changing any byte. A failing final patch leaves earlier patches unapplied. Runtime files on disk remain unchanged. The patch engine is not itself an ELF validator, runtime identity check, or registry of verified game compatibility.
+Compatibility fixes target POPS/PSXCore. PCSX2 is a test host, not the patch target. For example, `NP_FIX_READBACK` changes the POPS DMA-start path through a PSXCore adapter; its PCSX2 environment condition describes when it is selected, not which program is patched. PCSX2 patches, emulator regression fixtures and custom-host profiling tools have been removed. Never troubleshoot or modify PCSX2 for this project. Earlier modified-build results do not establish stock-PCSX2 support.
+
+Start with a zero-initialized `NpPatchSet`. After verifying runtime SHA-256 and ELF layout, call `np_runtime_correct`, install selected built-in adapters, queue optional catalog writes with `np_compat_add_patches`, then call `np_patch_apply` once. Core correction is required independently of game profiles; its API does not verify the runtime hash itself. Catalog planning leaves the plan unchanged on failure. Application checks all expected bytes, bounds and overlaps before any byte changes. A failing final patch leaves earlier changes unapplied. Files on disk remain unchanged. The patch engine is not itself an ELF validator or runtime identity check.
 
 ## Inventory implementation
 

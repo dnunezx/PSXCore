@@ -2,6 +2,7 @@
 #include "psxcore_boot.h"
 #include "psxcore_launch.h"
 #include "psxcore_patch.h"
+#include "psxcore_runtime.h"
 #include "config.h"
 #include "saveguards.h"
 #include <kernel.h>
@@ -28,6 +29,11 @@ extern void np_sector_consumer_quiet(void);
 extern void np_asset_copy_hook(void),np_asset_dma_hook(void),np_graphics_copy_hook(void);
 extern void np_graphics_pixels_hook(void),np_graphics_upload_hook(void);
 extern void np_graphics_readback_start(void);
+extern void np_memory_emit_finalize(void);
+extern void np_memory_group_finalize(void);
+extern void np_memory_wait_writer(void),np_memory_wait_writer_tail(void),np_memory_wait_dma(void);
+extern void np_memory_wait_reader(void),np_memory_wait_video(void),np_memory_wait_worker(void);
+extern void np_video_trace_entry(void),np_video_trace_decision(void),np_video_trace_exit(void);
 extern uint32_t np_disc_probe_enabled;
 extern uint32_t np_firmware_license_enabled;
 extern uint32_t np_asset_trace_enabled;
@@ -41,6 +47,84 @@ static NpPatchSet patch_set;
 static int queue_word(uint32_t address, uint32_t expected, uint32_t replacement) {
     return np_patch_add(&patch_set,address,&expected,&replacement,4)?-1:0;
 }
+/* Experimental shared adaptation of the checksum-pinned POPS scalar emitter.
+ * Its three-word memory/NOOP reservation is finalized before generated code
+ * can run. The original epilogue delay slot is retained. */
+#if NP_MEMORY_ACCESS_ADAPTER
+static int install_memory_access_adapter(const NpElf *elf) {
+    const uint32_t sites[2]={0x205d4c,0x206358};
+    const uint32_t expected[2][2]={{0x0180102d,0xdfb10018},{0x0220102d,0xdfb00030}};
+    const uintptr_t hooks[2]={(uintptr_t)np_memory_emit_finalize,(uintptr_t)np_memory_group_finalize};
+    for(unsigned j=0;j<2;++j) {
+        int found=0;
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
+                const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(words[0]!=expected[j][0] || words[1]!=expected[j][1])return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    for(unsigned j=0;j<2;++j)
+        if(queue_word(sites[j],expected[j][0],0x0c000000u|((uint32_t)hooks[j]>>2)))return -1;
+    return 0;
+}
+#endif
+#if NP_MEMORY_ACCESS_TRACE && NP_MEMORY_ACCESS_ADAPTER
+static int install_memory_wait_trace(const NpElf *elf) {
+    const uint32_t sites[6]={0x21a8a0,0x21a9c8,0x21ab98,0x21adb8,0x21aec8,0x21c650};
+    const uint32_t delays[6]={0x8e042b18,0x8e042b18,0x8e042b18,0x8e042b18,0x8e042b1c,0x8e242b14};
+    const uintptr_t hooks[6]={(uintptr_t)np_memory_wait_writer,(uintptr_t)np_memory_wait_writer_tail,
+        (uintptr_t)np_memory_wait_dma,(uintptr_t)np_memory_wait_reader,
+        (uintptr_t)np_memory_wait_video,(uintptr_t)np_memory_wait_worker};
+    for(unsigned j=0;j<6;++j) {
+        int found=0;
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
+                const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(words[0]!=0x0c08ba18 || words[1]!=delays[j])return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    for(unsigned j=0;j<6;++j)
+        if(queue_word(sites[j],0x0c08ba18,0x0c000000u|((uint32_t)hooks[j]>>2)))return -1;
+    return 0;
+}
+/* The video waiter has one pinned direct caller. Observe its entry, exact
+ * loop comparison and common exit without changing either branch target. */
+static int install_video_progress_trace(const NpElf *elf) {
+    const uint32_t sites[3]={0x21aec0,0x21af00,0x21af0c};
+    const uint32_t expected[3][2]={{0x245010f0,0x00000000},
+        {0x1083fff1,0x00000000},{0x3c048000,0xdfbf0008}};
+    const uintptr_t hooks[3]={(uintptr_t)np_video_trace_entry,
+        (uintptr_t)np_video_trace_decision,(uintptr_t)np_video_trace_exit};
+    for(unsigned j=0;j<3;++j) {
+        int found=0;
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
+                const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(words[0]!=expected[j][0] || words[1]!=expected[j][1])return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    for(unsigned j=0;j<3;++j) {
+        const uint32_t opcode=(j==0?0x0c000000u:0x08000000u)|((uint32_t)hooks[j]>>2);
+        if(queue_word(sites[j],expected[j][0],opcode))return -1;
+    }
+    return 0;
+}
+#endif
 static int install_hooks(const NpElf *elf,int game,int minimal,int assets,int native) {
     const uint32_t sites[24]={0x214968,0x2149a0,0x200790,0x2007b0,0x200828,0x200834,0x200868,0x200870,0x200888,0x2008a0,0x2008dc,0x200910,0x210068,0x2101b4,
         0x20e880,0x20eae4,0x20ea04,0x20eca4,0x20ef14,0x20f0e4,0x20ff14,0x20e9a8,0x20e550,0x21a918};
@@ -212,6 +296,10 @@ int main(void) {
         trace("PSXCORE launch=v2 profile=%s revision=%u fixes=%x environment=%u diagnostics=%u\n",
             resolved.profile,(unsigned)resolved.profile_revision,(unsigned)resolved.fixes,
             (unsigned)request.environment,(unsigned)request.options.diagnostics);
+        trace("PSXCORE identity=%s game=%s disc-revision=%s\n",
+            resolved.game_name?"matched":"unmatched",
+            resolved.game_name?resolved.game_name:"unidentified",
+            resolved.disc_revision?resolved.disc_revision:"unmatched");
         trace("PSXCORE saves=%s key=%s mode=%s\n",request.save_partition,request.save_key,
             request.save_mode==NP_SAVE_SHARED?"shared-explicit":"isolated");
     }
@@ -239,6 +327,25 @@ int main(void) {
     if(error || profile(&elf)) {
         trace("PSXCORE rejected=%s\n",error?error:"runtime-layout-profile");goto rejected;
     }
+    error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+#if NP_MEMORY_ACCESS_ADAPTER
+    if(native && request.environment==NP_ENV_PCSX2) {
+        if(install_memory_access_adapter(&elf)) {
+            trace("PSXCORE rejected=memory-access-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE memory-access-adapter=1 native-io=explicit scope=runtime experimental=yes\n");
+#if NP_MEMORY_ACCESS_TRACE
+        if(install_memory_wait_trace(&elf)) {
+            trace("PSXCORE rejected=memory-wait-trace-plan\n");goto rejected;
+        }
+        if(install_video_progress_trace(&elf)) {
+            trace("PSXCORE rejected=video-progress-trace-plan\n");goto rejected;
+        }
+        trace("PSXCORE memory-wait-trace=1 scope=guest calls=6 experimental=yes\n");
+#endif
+    }
+#endif
     if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
         trace("PSXCORE rejected=interface-patch-plan\n");goto rejected;
     }
@@ -257,8 +364,14 @@ int main(void) {
     if(license && adapt_firmware_license(&elf)) {
         trace("PSXCORE rejected=license-patch-plan\n");goto rejected;
     }
+    if(native) {
+        error=np_compat_add_patches(request.runtime,request.environment,resolved.fixes,&patch_set);
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    }
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    trace("PSXCORE core-corrections=%u texture-window=repeat scope=runtime\n",
+        (unsigned)NP_RUNTIME_CORRECTION_REVISION);
     np_firmware_license_enabled=license;
     np_asset_trace_enabled=assets;
     np_disc_probe_enabled=verify?2:probe;

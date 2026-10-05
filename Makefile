@@ -5,8 +5,10 @@ EE_OBJS = build/probe.o build/vcd.o $(addprefix build/,$(addsuffix _irx.o,$(MODU
 EE_INCS = -Iinclude
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_LIBS = -lfileXio -lpatches -ldebug
-CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch discmap sha1
+CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch runtime_corrections discmap sha1
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
+NP_MEMORY_ACCESS_ADAPTER ?= 0
+NP_MEMORY_ACCESS_TRACE ?= 0
 
 .PHONY: all library runtime inventory
 all: library runtime
@@ -14,8 +16,8 @@ library: build/libpsxcore.a
 inventory: $(EE_BIN)
 runtime: | build
 	mkdir -p build/runtime
-	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c src/compat.c src/launch.c src/patch.c build/runtime/
-	$(MAKE) -C build/runtime
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/patch.c src/runtime_corrections.c build/runtime/
+	$(MAKE) -C build/runtime NP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER) NP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
 
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal
@@ -24,6 +26,7 @@ build build/core:
 	mkdir -p $@
 build/core/%.o: src/%.c $(wildcard include/*.h) | build/core
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+build/core/compat.o: src/compat_profiles.generated.h
 build/libpsxcore.a: $(CORE_OBJS)
 	$(EE_AR) rcs $@ $^
 build/probe.o: src/probe.c include/psxcore_vcd.h | build

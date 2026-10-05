@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "doom-us-pcsx2-experimental",
+  "game": "Doom",
+  "revision": "USA SLUS_000.77, verified multitrack VCD image",
+  "serial": "SLUS_000.77",
+  "disc_sha256": "2b51e078e6aa19df24aefde63dec7a978b91104f1c293c05939bc7eec6a8a0f4",
+  "runtime_sha256": "59df3389c4df88a572daa720b05507c52c34eddfa0031a6fbeec55e0c2d0fcb1",
+  "environments": ["pcsx2"],
+  "fixes": ["license", "readback"],
+  "validation": {"status": "tested-experimental", "tested_environments": ["pcsx2"], "evidence": "tools/compatibility/GRAPHICS.md", "notes": "Sky correction validated in a guarded saved scene and automatic cold boot at nominal CPU settings; physical PS2 and broader games remain unverified. Existing local test host contains historical PCSX2 changes."}
+}

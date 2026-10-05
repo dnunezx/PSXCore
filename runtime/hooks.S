@@ -261,6 +261,7 @@ np_save_failed:
     b 44b
     nop
 /* Bounded strings and fixed eight-digit words through the EE serial FIFO. */
+    .globl np_hook_string
 np_hook_string:
     la $t0,np_trace_enabled
     lw $t0,0($t0)
@@ -453,6 +454,7 @@ np_hook_fnv:
     nop
     jr $ra
     nop
+    .globl np_hook_hex
 np_hook_hex:
     la $t0,np_trace_enabled
     lw $t0,0($t0)
