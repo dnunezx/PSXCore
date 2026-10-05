@@ -27,6 +27,13 @@ np_mount_hook:
     nop
     b np_hook_result
     nop
+/* Only the first, version-checked pfs1: mount call uses this entry point.
+ * Resident storage survives low-memory runtime loading. No shared-card fallback. */
+    .globl np_save_mount_hook
+np_save_mount_hook:
+    la $a1,np_save_partition
+    b np_mount_hook
+    nop
     .globl np_disc_hook
 np_disc_hook:
     addiu $sp,$sp,-128
@@ -48,9 +55,19 @@ np_disc_hook:
     nop
     .globl np_card_hook
 np_card_hook:
+    la $t0,np_native_request_enabled
+    lw $t0,0($t0)
+    beqz $t0,40f
+    nop
+    la $t0,np_save_ready
+    lw $t0,0($t0)
+    beqz $t0,np_native_stop
+    nop
+40:
     addiu $sp,$sp,-128
     sq $ra,96($sp)
-    sw $zero,112($sp)
+    li $t0,2
+    sw $t0,112($sp)
     jal 0x0020cf00
     nop
     sq $v0,64($sp)
@@ -68,8 +85,54 @@ np_hook_result:
     la $a0,newline
     jal np_hook_string
     nop
+    la $t0,np_native_request_enabled
+    lw $t0,0($t0)
+    beqz $t0,41f
+    nop
     lw $t0,112($sp)
-    beqz $t0,4f
+    lw $t1,64($sp)
+    bnez $t0,42f
+    nop
+    bnez $t1,np_native_stop /* mount success must be zero */
+    nop
+    lw $t0,32($sp)
+    lbu $t0,3($t0) /* checked native mount destination: pfs1: or pfs0: */
+    li $t1,49
+    bne $t0,$t1,41f
+    nop
+    la $t0,np_save_ready
+    li $t1,1
+    sw $t1,0($t0)
+    b 41f
+    nop
+42:
+    li $t0,1
+    bne $t1,$t0,np_native_stop /* disc initializer success; card return is insufficient */
+    nop
+    lw $t0,112($sp)
+    li $t1,2
+    bne $t0,$t1,41f
+    nop
+    /* The pinned native card initializer returns one on failure too. Each
+     * slot's bit zero is set only after its 128 KiB read/header validation.
+     * Slot stride is 0x20010; the runtime hash guards these state addresses. */
+    li $t0,0x00507920
+    lw $t1,0($t0)
+    andi $t1,$t1,1
+    beqz $t1,np_native_stop
+    nop
+    li $t0,0x00527930
+    lw $t1,0($t0)
+    andi $t1,$t1,1
+    beqz $t1,np_native_stop
+    nop
+    la $a0,cards_ready
+    jal np_hook_string
+    nop
+41:
+    lw $t0,112($sp)
+    li $t1,1
+    bne $t0,$t1,4f
     nop
     la $t0,np_disc_probe_enabled
     lw $t0,0($t0)
@@ -81,8 +144,22 @@ np_hook_result:
     lq $ra,96($sp)
     jr $ra
     addiu $sp,$sp,128
+np_native_stop:
+    la $t0,np_trace_enabled
+    li $t1,1
+    sw $t1,0($t0)
+    la $a0,native_failed
+    jal np_hook_string
+    nop
+43:
+    b 43b
+    nop
 /* Bounded strings and fixed eight-digit words through the EE serial FIFO. */
 np_hook_string:
+    la $t0,np_trace_enabled
+    lw $t0,0($t0)
+    beqz $t0,2f
+    nop
     lui $t0,0x1001
     li $t1,128
 1:
@@ -271,6 +348,13 @@ np_hook_fnv:
     jr $ra
     nop
 np_hook_hex:
+    la $t0,np_trace_enabled
+    lw $t0,0($t0)
+    bnez $t0,40f
+    nop
+    jr $ra
+    nop
+40:
     lui $t0,0x1001
     li $t1,28
     la $t2,hex_digits
@@ -1342,6 +1426,8 @@ np_cache_snapshot:
     addiu $sp,$sp,64
     .globl np_hooks_code_end
 np_hooks_code_end:
+native_failed: .asciz "PSXCORE native=initialization-failed no-save-fallback=yes stopped=yes\n"
+cards_ready: .asciz "PSXCORE native=cards-ready slots=2 validated=yes\n"
 mount_prefix: .asciz "PSXCORE native=mount target="
 source_prefix: .asciz " source="
 disc_prefix: .asciz "PSXCORE native=disc path="
@@ -1407,6 +1493,13 @@ np_disc_probe_enabled: .word 0
 np_firmware_license_enabled: .word 0
     .globl np_asset_trace_enabled
 np_asset_trace_enabled: .word 0
+    .globl np_native_request_enabled
+np_native_request_enabled: .word 0
+    .globl np_trace_enabled
+np_trace_enabled: .word 1
+np_save_ready: .word 0
+    .globl np_save_partition
+np_save_partition: .space 40
 core_count: .word 0
 rpc_count: .word 0
 completion_count: .word 0

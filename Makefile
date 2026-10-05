@@ -5,7 +5,7 @@ EE_OBJS = build/probe.o build/vcd.o $(addprefix build/,$(addsuffix _irx.o,$(MODU
 EE_INCS = -Iinclude
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_LIBS = -lfileXio -lpatches -ldebug
-CORE_NAMES = vcd request elf boot_elf boot_sha256
+CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
 
 .PHONY: all library runtime inventory
@@ -14,7 +14,7 @@ library: build/libpsxcore.a
 inventory: $(EE_BIN)
 runtime: | build
 	mkdir -p build/runtime
-	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c build/runtime/
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c src/compat.c src/launch.c src/patch.c build/runtime/
 	$(MAKE) -C build/runtime
 
 include $(PS2SDK)/samples/Makefile.pref

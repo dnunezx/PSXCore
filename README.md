@@ -8,7 +8,9 @@ Sony's POPS emulator remains proprietary and **is not included**. Runtime execut
 
 ## Status
 
-This is an experimental source release. The portable core validates VCD headers, fixed-size launch requests, and bounded ELF layouts and provides SHA-256 verification. The separate runtime bootstrap contains version-specific startup, transfer, and in-memory adaptation code. It is not a finished end-user application; broad game compatibility, integration into a frontend, and physical-console acceptance remain to be established.
+This is an experimental source release. The portable core validates VCD headers, fixed-size launch requests, and bounded ELF layouts and provides SHA-256 verification. It also resolves Automatic / Default / Custom compatibility options and validates complete patch sets before changing the staged runtime. The version-2 launch path selects an already prepared native disc partition and an explicit save partition; version 1 remains a separate dry-run API.
+
+The separate runtime bootstrap contains version-specific startup, transfer, and in-memory adaptation code. Its experimental save path has passed local PCSX2 creation, per-identity routing, invalid-card rejection, and cold loading of distinct diagnostic card contents. Actual in-game save/reload, backup/flush failure handling, graceful shutdown, general VCD-file mapping, frontend integration, broader game compatibility, and physical-console acceptance remain to be established. See [INTEGRATION.md](INTEGRATION.md) for the launch contract and verification boundaries.
 
 ## Build
 

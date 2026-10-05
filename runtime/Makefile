@@ -1,5 +1,5 @@
 EE_BIN = psxcore-runtime-bootstrap.elf
-EE_OBJS = main.o transfer.o hooks.o boot_elf.o boot_sha256.o
+EE_OBJS = main.o transfer.o hooks.o boot_elf.o boot_sha256.o compat.o launch.o patch.o
 EE_INCS = -I../../include
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_LIBS = -liopreboot -lpatches -ldebug
