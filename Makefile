@@ -1,0 +1,42 @@
+.DEFAULT_GOAL := library
+EE_BIN = build/psxcore-inventory.elf
+MODULES = iomanX fileXio ps2dev9 bdm psxcore_ro ata_bd ps2hdd_bdm ps2fs
+EE_OBJS = build/probe.o build/vcd.o $(addprefix build/,$(addsuffix _irx.o,$(MODULES)))
+EE_INCS = -Iinclude
+EE_CFLAGS = -O2 -Wall -Wextra -Werror
+EE_LIBS = -lfileXio -lpatches -ldebug
+CORE_NAMES = vcd request elf boot_elf boot_sha256
+CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
+
+.PHONY: all library runtime inventory
+all: library runtime
+library: build/libpsxcore.a
+inventory: $(EE_BIN)
+runtime: | build
+	mkdir -p build/runtime
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c build/runtime/
+	$(MAKE) -C build/runtime
+
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal
+
+build build/core:
+	mkdir -p $@
+build/core/%.o: src/%.c $(wildcard include/*.h) | build/core
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+build/libpsxcore.a: $(CORE_OBJS)
+	$(EE_AR) rcs $@ $^
+build/probe.o: src/probe.c include/psxcore_vcd.h | build
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+build/vcd.o: src/vcd.c include/psxcore_vcd.h | build
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+build/%_irx.c: $(PS2SDK)/iop/irx/%.irx | build
+	$(PS2SDK)/bin/bin2c $< $@ $*_irx
+build/ps2hdd_bdm_irx.c: $(PS2SDK)/iop/irx/ps2hdd-bdm.irx | build
+	$(PS2SDK)/bin/bin2c $< $@ ps2hdd_bdm_irx
+build/psxcore_ro.irx: iop/readonly.c iop/imports.lst iop/irx_imports.h iop/Makefile | build
+	$(MAKE) -C iop
+build/psxcore_ro_irx.c: build/psxcore_ro.irx
+	$(PS2SDK)/bin/bin2c $< $@ psxcore_ro_irx
+build/%_irx.o: build/%_irx.c
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
