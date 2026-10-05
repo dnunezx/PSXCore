@@ -5,7 +5,7 @@ EE_OBJS = build/probe.o build/vcd.o $(addprefix build/,$(addsuffix _irx.o,$(MODU
 EE_INCS = -Iinclude
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_LIBS = -lfileXio -lpatches -ldebug
-CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch
+CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch discmap sha1
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
 
 .PHONY: all library runtime inventory

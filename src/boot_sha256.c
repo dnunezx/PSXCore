@@ -1,5 +1,6 @@
 /* Original SHA-256 implementation, FIPS 180-4 operations. No external code. */
 #include "psxcore_boot.h"
+#include "psxcore_hash.h"
 #include <string.h>
 static const uint32_t k[64]={
 0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
@@ -25,13 +26,30 @@ static void block(uint32_t h[8],const unsigned char p[64]) {
     }
     h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=z;
 }
-void np_boot_sha256(const void *bytes,size_t size,unsigned char digest[32]) {
-    uint32_t h[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-    const unsigned char *p=bytes; uint64_t bits=(uint64_t)size*8;
-    while (size>=64) { block(h,p);p+=64;size-=64; }
-    unsigned char tail[128]={0}; memcpy(tail,p,size);tail[size]=0x80;
-    unsigned end=size<56?64:128;
+void np_sha256_init(NpSha256 *hash) {
+    static const uint32_t initial[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
+        0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    memset(hash,0,sizeof(*hash));memcpy(hash->state,initial,sizeof(initial));
+}
+void np_sha256_update(NpSha256 *hash,const void *bytes,size_t size) {
+    const unsigned char *p=bytes;
+    hash->bytes+=(uint64_t)size;
+    while(size) {
+        if(!hash->used && size>=64) { block(hash->state,p);p+=64;size-=64;continue; }
+        size_t n=64-hash->used;if(n>size)n=size;
+        memcpy(hash->buffer+hash->used,p,n);hash->used+=n;p+=n;size-=n;
+        if(hash->used==64) { block(hash->state,hash->buffer);hash->used=0; }
+    }
+}
+void np_sha256_final(NpSha256 *hash,unsigned char digest[32]) {
+    uint64_t bits=hash->bytes*8;
+    unsigned char tail[128]={0};memcpy(tail,hash->buffer,hash->used);tail[hash->used]=0x80;
+    unsigned end=hash->used<56?64:128;
     for (unsigned i=0;i<8;++i) tail[end-1-i]=(unsigned char)(bits>>(8*i));
-    block(h,tail);if(end==128)block(h,tail+64);
-    for(unsigned i=0;i<32;++i)digest[i]=(unsigned char)(h[i/4]>>(24-8*(i%4)));
+    block(hash->state,tail);if(end==128)block(hash->state,tail+64);
+    for(unsigned i=0;i<32;++i)digest[i]=(unsigned char)(hash->state[i/4]>>(24-8*(i%4)));
+    memset(hash,0,sizeof(*hash));
+}
+void np_boot_sha256(const void *bytes,size_t size,unsigned char digest[32]) {
+    NpSha256 hash;np_sha256_init(&hash);np_sha256_update(&hash,bytes,size);np_sha256_final(&hash,digest);
 }

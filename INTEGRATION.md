@@ -45,7 +45,7 @@ Initialize requests using `np_launch_init`, then fill:
 
 Integer fields use little-endian encoding on PS2. Reserved fields and padding must be zero. The struct has no pointers; its size is asserted at compile time. Non-PS2 consumers must serialize integer fields in little-endian order rather than assuming their native struct encoding.
 
-`np_launch_check` validates structure and resolves options; it does **not** open partitions, verify disc hashes, confirm saves exist, or provision storage. `np_launch_argument` produces `hdd0:PP.GAME:/disc/disc0` after validation. Ordinary `.VCD` files inside a shared library are not automatically mapped to this native path.
+`np_launch_check` validates structure and resolves options; it does **not** open partitions, verify disc hashes, confirm saves exist, or provision storage. `np_launch_argument` produces `hdd0:PP.GAME:/disc/disc0` after validation. The explicit prepared-disc catalog provides association and request construction for selected library images and byte-identical prepared native images; the frontend must measure and verify both files. See [DISC-MAPPING.md](DISC-MAPPING.md). Ordinary `.VCD` filenames alone do not imply a native target.
 
 The frontend must validate the actual selected native image, compute both hashes from that image, obtain its serial from validated disc content, and keep that image/partition association stable through launch. The bootstrap's native header job checks only the header. A supplied full digest selects a profile but is not runtime proof that the mounted disc matches it. Until that association is independently verified, automatic profiles are experimental metadata-driven selections.
 
