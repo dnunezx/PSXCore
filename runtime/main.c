@@ -3,6 +3,7 @@
 #include "psxcore_launch.h"
 #include "psxcore_patch.h"
 #include "config.h"
+#include "saveguards.h"
 #include <kernel.h>
 #include <sifrpc.h>
 #include <iopcontrol.h>
@@ -33,6 +34,9 @@ extern uint32_t np_asset_trace_enabled;
 extern uint32_t np_native_request_enabled, np_trace_enabled;
 extern char np_save_partition[40];
 extern void np_save_mount_hook(void);
+extern void np_save_open_hook(void),np_save_write_hook(void),np_save_close_hook(void);
+extern void np_save_rename_hook(void),np_save_sync_hook(void),np_save_wait_hook(void);
+extern void np_save_sema_hook(void),np_save_thread_hook(void),np_save_start_hook(void);
 static NpPatchSet patch_set;
 static int queue_word(uint32_t address, uint32_t expected, uint32_t replacement) {
     return np_patch_add(&patch_set,address,&expected,&replacement,4)?-1:0;
@@ -64,6 +68,15 @@ static int install_hooks(const NpElf *elf,int game,int minimal,int assets,int na
         if(queue_word(sites[i],*words[i],0x0c000000u|((uint32_t)hooks[i]>>2)))return -1;
     }
     return 0;
+}
+/* Required v2 save guards. Preserve every original argument/delay slot and
+ * prepare all redirects transactionally with the other staged patches. */
+static int install_save_guards(const NpElf *elf) {
+    const uintptr_t hooks[9]={(uintptr_t)np_save_open_hook,(uintptr_t)np_save_write_hook,
+        (uintptr_t)np_save_close_hook,(uintptr_t)np_save_rename_hook,(uintptr_t)np_save_sync_hook,
+        (uintptr_t)np_save_wait_hook,(uintptr_t)np_save_sema_hook,(uintptr_t)np_save_thread_hook,
+        (uintptr_t)np_save_start_hook};
+    return np_runtime_save_plan((void *)NP_BOOT_STAGE,3166988,elf,hooks,&patch_set)?-1:0;
 }
 /* Observe only verified image-worker boundaries. The first site displaces one
  * scalar comparison, executed by the hook on return; its delay slot stays put. */
@@ -228,6 +241,9 @@ int main(void) {
     }
     if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
         trace("PSXCORE rejected=interface-patch-plan\n");goto rejected;
+    }
+    if(native && install_save_guards(&elf)) {
+        trace("PSXCORE rejected=save-guard-patch-plan\n");goto rejected;
     }
     if(graphics && install_graphics_hooks(&elf)) {
         trace("PSXCORE rejected=graphics-patch-plan\n");goto rejected;

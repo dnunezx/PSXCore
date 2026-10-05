@@ -14,7 +14,7 @@ library: build/libpsxcore.a
 inventory: $(EE_BIN)
 runtime: | build
 	mkdir -p build/runtime
-	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c src/compat.c src/launch.c src/patch.c build/runtime/
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/hooks.S runtime/transfer.S src/boot_elf.c src/boot_sha256.c src/compat.c src/launch.c src/patch.c build/runtime/
 	$(MAKE) -C build/runtime
 
 include $(PS2SDK)/samples/Makefile.pref

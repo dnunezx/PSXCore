@@ -127,6 +127,8 @@ np_hook_result:
     beqz $t1,np_native_stop
     nop
     la $a0,cards_ready
+    .globl np_card_ready_notify
+np_card_ready_notify:
     jal np_hook_string
     nop
 41:
@@ -153,6 +155,110 @@ np_native_stop:
     nop
 43:
     b 43b
+    nop
+/* Native save calls have at most three arguments. Reserve their ABI home
+ * area; keep exact wide v0/v1/ra and the original write length across calls.
+ * A failing guard never returns to the worker's dirty-bit clearance. */
+    .macro NP_SAVE_CHECK name,target,stage,write=0
+    .globl \name
+\name:
+    addiu $sp,$sp,-96
+    sw $a2,32($sp)
+    sq $ra,48($sp)
+    jal \target
+    nop
+    sq $v0,64($sp)
+    sq $v1,80($sp)
+    la $t1,np_native_request_enabled
+    lw $t1,0($t1)
+    beqz $t1,1f
+    nop
+    sll $t0,$v0,0 /* sign-extend the native 32-bit result */
+    .if \write
+    lw $t1,32($sp)
+    beq $t0,$t1,2f
+    nop
+    .else
+    bgez $t0,2f
+    nop
+    .endif
+    li $a0,\stage
+    move $a1,$t0
+    b np_save_failed
+    nop
+2:
+    .if \stage == 3
+    /* Flush the complete, closed backup before allowing its replacement.
+     * Preserve the close call's exact results for the original caller. */
+    la $a0,np_save_sync_mount
+    move $a1,$zero
+    jal 0x2334b8
+    nop
+    sll $t0,$v0,0
+    bgez $t0,1f
+    nop
+    li $a0,10 /* backup pre-replacement flush */
+    move $a1,$t0
+    b np_save_failed
+    nop
+    .endif
+    .if \stage == 5
+    la $t0,np_save_flush_count
+    lw $t1,0($t0)
+    addiu $t1,$t1,1
+    sw $t1,0($t0)
+    la $a0,save_flushed
+    jal np_hook_string
+    nop
+    .endif
+1:
+    lq $v0,64($sp)
+    lq $v1,80($sp)
+    lq $ra,48($sp)
+    jr $ra
+    addiu $sp,$sp,96
+    .endm
+    NP_SAVE_CHECK np_save_open_hook,0x231358,1
+    NP_SAVE_CHECK np_save_write_hook,0x231c08,2,1
+    NP_SAVE_CHECK np_save_close_hook,0x2315e0,3
+    NP_SAVE_CHECK np_save_rename_hook,0x2332a8,4
+    NP_SAVE_CHECK np_save_sync_hook,0x2334b8,5
+    NP_SAVE_CHECK np_save_sema_hook,0x22e820,6
+    NP_SAVE_CHECK np_save_thread_hook,0x22e620,7
+    NP_SAVE_CHECK np_save_start_hook,0x22e640,8
+    NP_SAVE_CHECK np_save_wait_hook,0x22e860,9
+np_save_failed:
+    la $t0,np_save_error_stage
+    sw $a0,0($t0)
+    la $t0,np_save_error_result
+    sw $a1,0($t0)
+    la $t0,np_trace_enabled
+    li $t1,1
+    sw $t1,0($t0)
+    la $a0,save_failed
+    jal np_hook_string
+    nop
+    la $t0,np_save_error_stage
+    lw $a0,0($t0)
+    jal np_hook_hex
+    nop
+    la $a0,result_prefix
+    jal np_hook_string
+    nop
+    la $t0,np_save_error_result
+    lw $a0,0($t0)
+    jal np_hook_hex
+    nop
+    la $a0,save_stopped
+    jal np_hook_string
+    nop
+    /* Parking the save worker alone would let gameplay continue. Freeze EE
+     * scheduling after the synchronous failed operation/diagnostic completes.
+     * This is a fatal guard, not a recovery or graceful-shutdown procedure. */
+    di
+    sync
+44:
+    b 44b
     nop
 /* Bounded strings and fixed eight-digit words through the EE serial FIFO. */
 np_hook_string:
@@ -1428,6 +1534,10 @@ np_cache_snapshot:
 np_hooks_code_end:
 native_failed: .asciz "PSXCORE native=initialization-failed no-save-fallback=yes stopped=yes\n"
 cards_ready: .asciz "PSXCORE native=cards-ready slots=2 validated=yes\n"
+save_failed: .asciz "PSXCORE save=failed stage="
+save_stopped: .asciz " no-save-fallback=yes stopped=yes\n"
+save_flushed: .asciz "PSXCORE save=flush-completed\n"
+np_save_sync_mount: .asciz "pfs1:"
 mount_prefix: .asciz "PSXCORE native=mount target="
 source_prefix: .asciz " source="
 disc_prefix: .asciz "PSXCORE native=disc path="
@@ -1500,6 +1610,12 @@ np_trace_enabled: .word 1
 np_save_ready: .word 0
     .globl np_save_partition
 np_save_partition: .space 40
+    .globl np_save_error_stage
+np_save_error_stage: .word 0
+    .globl np_save_error_result
+np_save_error_result: .word 0
+    .globl np_save_flush_count
+np_save_flush_count: .word 0
 core_count: .word 0
 rpc_count: .word 0
 completion_count: .word 0
