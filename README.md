@@ -2,17 +2,11 @@
 
 PSXCore is an open-source PS1 launch and runtime-adaptation project for PlayStation 2. It began with a simple goal: make the launcher layer open for people to inspect, improve, fork, and integrate into their own projects.
 
-This standalone repository contains the original implementation, reviewed compatibility manifests, generic tools, and synthetic regression tests. It has no frontend dependency and can be consumed as a Git submodule. Local development data, proprietary inputs, personal configuration, and private harnesses are excluded.
+This standalone repository contains the original implementation and its build files. It has no frontend dependency and can be consumed as a Git submodule. Development notes, plans, local data, test fixtures, test harnesses, and developer tools are excluded.
 
 Sony's POPS emulator remains proprietary and **is not included**. Runtime execution requires separately supplied, checksum-verified `POPS.ELF` and `IOPRP252.IMG`. No Sony runtime, firmware, game, save, or emulator binary is distributed here.
 
-**Compatibility fixes target POPS/PSXCore. PCSX2 is a test host, not the patch target.** PSXCore validates the separately supplied POPS revision and applies guarded changes to its staged code/data in PS2 RAM. Changes to the original launcher, patch policy and runtime adapters belong in PSXCore. Supplied Sony and game files remain unchanged.
-
-Reusable POPS/PSXCore diagnostics are collected in [tools/compatibility](tools/compatibility/README.md). PCSX2 source patches, emulator regression fixtures and custom-host profiling tools have been removed. Never troubleshoot or modify PCSX2 for this project. Use an unmodified, separately supplied test host. Earlier modified-host results remain historical evidence and do not establish stock-host support. The [runtime change inventory](tools/compatibility/PATCHES.md) lists the remaining POPS/PSXCore adaptations.
-
 ## Status
-
-[Automatic compatibility profiles](compatibility/README.md) match the serial, exact image hash, runtime revision, and tested environment. Doom and Spyro profiles select optional startup/readback adapters. The [shared texture-window correction](RUNTIME-CORRECTIONS.md) is integrated into PSXCore's core POPS boot path for every game/mode using the supported runtime; it no longer depends on Doom's profile. Developers add reviewed game profiles and optional byte corrections to `compatibility/`, regenerate the catalog, and rebuild. Default suppresses optional fixes while retaining core corrections; Custom overrides optional fixes only.
 
 This is an experimental source release. The portable core validates VCD headers, fixed-size launch requests, and bounded ELF layouts and provides SHA-256 verification. It also resolves Automatic / Default / Custom compatibility options and validates complete patch sets before changing the staged runtime. The version-2 launch path selects an already prepared native disc partition and an explicit save partition; version 1 remains a separate dry-run API.
 
@@ -27,7 +21,6 @@ Build the portable C11 library using CMake:
 ```sh
 cmake -S . -B build/host
 cmake --build build/host
-ctest --test-dir build/host --output-on-failure
 ```
 
 For PS2 builds, use an installed PS2SDK toolchain:
@@ -65,8 +58,6 @@ target_link_libraries(your_target PRIVATE PSXCore::core)
 ```
 
 See [INTEGRATION.md](INTEGRATION.md) for API and runtime requirements. Forks, fixes, and integrations are welcome under the applicable license.
-
-The opt-in generated-memory adapter and guest wait observers are documented in [MEMORY-ACCESS.md](MEMORY-ACCESS.md). They remain disabled by default; stock-host gameplay acceptance is incomplete.
 
 ## License
 

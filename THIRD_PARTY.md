@@ -6,4 +6,4 @@ Original PSXCore source and adaptations: Danny Nunez (dnunezx), 2026.
 - **POPS2CUE/CUE2POPS** — https://github.com/bucanero/pops2cue. Public interoperability reference for VCD fields; its implementation was not copied into the core.
 - **Sony POPS** — separately supplied proprietary runtime, referenced for interoperability. Not included or relicensed by PSXCore.
 
-No closed-source launcher executable or unreleased launcher source is a build dependency. POPS/PSXCore diagnostics and runtime adaptations are cataloged in [tools/compatibility/PATCHES.md](tools/compatibility/PATCHES.md). PCSX2-derived patches and fixtures have been removed. No emulator modification is a source or build dependency. Never troubleshoot or patch PCSX2 for this project. Private fixtures, emulator binaries and project-specific development harnesses remain outside this source package.
+No closed-source launcher executable or unreleased launcher source is a build dependency. Emulator patches, external host fixture utilities, and local development tools are outside this source package.
