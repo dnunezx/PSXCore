@@ -40,6 +40,77 @@ extern void np_video_interlace_applied(void);
 extern void np_rgb24_buffered(void),np_rgb24_dispatch(void);
 static NpPatchSet patch_set;
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#if NP_AUDIO_GAP_DECLICK
+extern void np_audio_gap_declick(void);
+/* The native output callback copies/zero-fills 251 input stereo frames here,
+ * then resamples them. Change only its temporary PCM gap edges, before
+ * resampling. The firmware, input ring, voice state, clocks and DMA stay native. */
+static int install_audio_gap_adapter(const NpElf *elf) {
+    const uint32_t expected[2]={0x0c08516c,0x24060100};
+    const uintptr_t hook=(uintptr_t)np_audio_gap_declick;
+    if(hook<0xf0000 || hook>=0xf7000 || (hook&3))return -1;
+    for(unsigned i=0;i<elf->count;++i) {
+        const NpSegment *s=&elf->segments[i];
+        if(s->address<=0x213ff4 && 0x213ffc<=s->address+s->filesz) {
+            const void *words=(const void *)(NP_BOOT_STAGE+s->offset+0x213ff4-s->address);
+            if(memcmp(words,expected,sizeof(expected)))return -1;
+            return queue_word(0x213ff4,expected[0],0x0c000000u|((uint32_t)hook>>2));
+        }
+    }
+    return -1;
+}
+#endif
+#if NP_GP0_PACKET_COALESCE || NP_GP0_PACKET_TRACE || NP_GP0_SCALAR_WRITE
+extern void np_gp0_publish(void),np_gp0_read_barrier(void),np_gp0_status_barrier(void);
+extern void np_gp0_control_barrier(void),np_gp0_video_barrier(void);
+#if NP_GP0_SCALAR_WRITE
+extern void np_gp0_scalar_write(void);
+#endif
+/* Only the pinned CPU single-word caller can defer a publication. GPU reads,
+ * GP1/reset and VBlank flush before executing their original native paths.
+ * The complete firmware identity/layout is checked before planning these words. */
+static int install_gp0_packet_adapter(const NpElf *elf) {
+    const uint32_t sites[5]={0x21a974,0x20b4b0,0x20b4c0,0x21a568,0x21aeb0};
+    const uint32_t expected[5][2]={{0x0c08ba1c,0x8e042b14},
+        {0x0c0869a6,0},{0x0c086b0c,0},{0x27bdffe0,0xffb10008},{0x27bdfff0,0x3c027000}};
+    const uintptr_t hooks[5]={(uintptr_t)np_gp0_publish,
+        (uintptr_t)np_gp0_read_barrier,(uintptr_t)np_gp0_status_barrier,
+        (uintptr_t)np_gp0_control_barrier,(uintptr_t)np_gp0_video_barrier};
+    for(unsigned j=0;j<5;++j) {
+        int found=0;
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
+                const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(memcmp(words,expected[j],sizeof(expected[j])))return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+#if NP_GP0_SCALAR_WRITE
+    const uintptr_t scalar=(uintptr_t)np_gp0_scalar_write;
+    int found=0;
+    if(scalar<0xf0000 || scalar>=0xf7000 || (scalar&3))return -1;
+    for(unsigned i=0;i<elf->count;++i) {
+        const NpSegment *s=&elf->segments[i];
+        if(s->address<=0x20b508 && 0x20b510<=s->address+s->filesz) {
+            const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+0x20b508-s->address);
+            if(words[0]!=0x0c086a02 || words[1]!=0x24050001)return -1;
+            found=1;break;
+        }
+    }
+    if(!found || queue_word(0x20b508,0x0c086a02,0x0c000000u|((uint32_t)scalar>>2)))return -1;
+#endif
+    for(unsigned j=0;j<5;++j) {
+        if(queue_word(sites[j],expected[j][0],(j==1 || j==2?0x0c000000u:0x08000000u)|
+                      ((uint32_t)hooks[j]>>2)))return -1;
+        if(j>=3 && queue_word(sites[j]+4,expected[j][1],0))return -1;
+    }
+    return 0;
+}
+#endif
 #if NP_VIDEO_TRANSITION_FIX && !NP_MEMORY_ACCESS_ADAPTER
 #error "The video transition candidate requires the memory adapter candidate"
 #endif
@@ -403,6 +474,24 @@ int main(void) {
     }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+#if NP_AUDIO_GAP_DECLICK
+    if(native) {
+        if(install_audio_gap_adapter(&elf)) {
+            trace("PSXCORE rejected=audio-gap-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE audio-gap-declick=1 scope=temporary-pcm experimental=yes\n");
+    }
+#endif
+#if NP_GP0_PACKET_COALESCE || NP_GP0_PACKET_TRACE || NP_GP0_SCALAR_WRITE
+    if(native) {
+        if(install_gp0_packet_adapter(&elf)) {
+            trace("PSXCORE rejected=gp0-packet-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE gp0-packet-coalesce=%u scalar-write=%u trace=%u experimental=yes\n",
+              (unsigned)NP_GP0_PACKET_COALESCE,(unsigned)NP_GP0_SCALAR_WRITE,
+              (unsigned)NP_GP0_PACKET_TRACE);
+    }
+#endif
 #if NP_MEMORY_ACCESS_ADAPTER
     if(native) {
         if(install_memory_access_adapter(&elf)) {

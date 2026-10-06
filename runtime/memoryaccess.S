@@ -102,6 +102,15 @@ np_memory_group_plan_failed:
 \name:
     addu $v0,$a0,$a3
     and $v1,$v0,$at
+#if NP_MEMORY_RAM_FASTPATH
+    /* RAM/mirrors cannot overlap native MMIO or expansion registers. Check
+     * this common case before those cold paths without changing any access,
+     * helper entry address, register contract or guest cycle charge. */
+    lui $a2,0x0080
+    sltu $a2,$v1,$a2
+    bnez $a2,\name\()_ram
+    nop
+#endif
     lui $a2,0x1f80
     ori $a2,$a2,0x1000
     subu $a2,$v1,$a2
@@ -124,10 +133,12 @@ np_memory_group_plan_failed:
     .endif
     /* Only RAM/mirrors, scratchpad and BIOS may reach a direct access.
      * Unknown addresses park instead of silently accepting a skipped fault. */
+#if !NP_MEMORY_RAM_FASTPATH
     lui $a2,0x0080
     sltu $a2,$v1,$a2
     bnez $a2,\name\()_ram
     nop
+#endif
     lui $a2,0x1fc0
     subu $a2,$v1,$a2
     lui $a3,0x0008
@@ -756,7 +767,15 @@ np_video_wait_result:
     .space 16
     .balign 16
 np_video_trace_records:
+#if NP_AUDIO_GAP_DECLICK
+#if NP_MEMORY_ACCESS_TRACE
+#error "Audio gap adapter reuses the inactive video trace ring; enable only one"
+#endif
+#include "audio.S"
+    .space 4096-(.-np_video_trace_records)
+#else
     .space 4096
+#endif
     .balign 16
     .globl np_video_csr_written,np_video_csr_records
 np_video_csr_written:
