@@ -250,8 +250,9 @@ static int install_graphics_hooks(const NpElf *elf) {
         if(queue_word(sites[i],*words[i],0x0c000000u|((uint32_t)hooks[i]>>2)))return -1;
     return 0;
 }
-/* PCSX2 v2.6.3 FIFO writes consume the already-programmed DMA address/count.
- * Reapply the native readback descriptor after the two manual FIFO writes.
+/* Reapply the queued native readback descriptor after the two manual FIFO
+ * writes, before DMA starts. This retains the native descriptor on PS2 and
+ * removes dependence on a test host preserving it across the FIFO writes.
  * The redirect's li a1,2 precedes the hook; its fixed CHCR store is equivalent. */
 static int install_readback_repair(const NpElf *elf) {
     const uintptr_t hook=(uintptr_t)np_graphics_readback_start;
@@ -384,6 +385,12 @@ int main(void) {
         license=!!(resolved.fixes&NP_FIX_LICENSE);
         repair=!!(resolved.fixes&NP_FIX_READBACK);
     }
+#if NP_RGB24_SCANOUT_ADAPTER
+    /* Native RGB24 conversion requires the checked readback adapter. Install
+     * that prerequisite on both supported platforms with the core feature,
+     * independently of game profiles and optional fix selections. */
+    if(native)repair=1;
+#endif
     if(read_known("host:/POPS.ELF",(void *)NP_BOOT_STAGE,3166988,elf_hash)) {
         trace("PSXCORE rejected=runtime-file-identity\n");goto rejected;
     }
@@ -397,16 +404,16 @@ int main(void) {
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
 #if NP_MEMORY_ACCESS_ADAPTER
-    if(native && request.environment==NP_ENV_PCSX2) {
+    if(native) {
         if(install_memory_access_adapter(&elf)) {
             trace("PSXCORE rejected=memory-access-patch-plan\n");goto rejected;
         }
-        trace("PSXCORE memory-access-adapter=1 native-io=explicit scope=runtime experimental=yes\n");
+        trace("PSXCORE memory-access-adapter=1 native-io=explicit scope=runtime activation=automatic\n");
 #if NP_VIDEO_TRANSITION_FIX
         if(install_video_transition_fix(&elf)) {
             trace("PSXCORE rejected=video-transition-patch-plan\n");goto rejected;
         }
-        trace("PSXCORE video-transition-fix=1 state=applied-interlace pending=guarded scope=runtime experimental=yes\n");
+        trace("PSXCORE video-transition-fix=1 state=applied-interlace pending=guarded scope=runtime activation=automatic\n");
 #endif
 #if NP_MEMORY_ACCESS_TRACE
         if(install_memory_wait_trace(&elf)) {
@@ -420,11 +427,11 @@ int main(void) {
     }
 #endif
 #if NP_RGB24_SCANOUT_ADAPTER
-    if(native && request.environment==NP_ENV_PCSX2 && repair) {
+    if(native && repair) {
         if(install_rgb24_scanout_adapter(&elf)) {
             trace("PSXCORE rejected=rgb24-scanout-patch-plan\n");goto rejected;
         }
-        trace("PSXCORE rgb24-scanout-adapter=1 scanout=buffered transport=native scope=runtime experimental=yes\n");
+        trace("PSXCORE rgb24-scanout-adapter=1 scanout=buffered transport=native scope=runtime activation=automatic\n");
     }
 #endif
     if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
@@ -472,7 +479,7 @@ int main(void) {
     if(license)trace("PSXCORE compatibility=firmware-license-experiment source=pinned-native-sector file=unmodified\n");
     if(assets)trace("PSXCORE diagnostic=asset-reads samples-max=64 boot-sectors=excluded\n");
     if(graphics)trace("PSXCORE diagnostic=graphics-uploads samples-max=16 boundary=completed-gather no-worker-wait=yes\n");
-    if(repair)trace("PSXCORE compatibility=pcsx2-readback-descriptor restore-before-start=yes file=unmodified\n");
+    if(repair)trace("PSXCORE compatibility=native-readback-descriptor restore-before-start=yes file=unmodified\n");
     fflush(stdout);
     if(image) {
         trace("PSXCORE iop=image-reset-begin\n");

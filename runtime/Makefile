@@ -3,10 +3,10 @@ EE_BIN = psxcore-runtime-bootstrap.elf
 EE_OBJS = main.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o rgb24.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o
 EE_INCS = -I../../include
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
-NP_MEMORY_ACCESS_ADAPTER ?= 0
+NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
-NP_VIDEO_TRANSITION_FIX ?= 0
-NP_RGB24_SCANOUT_ADAPTER ?= 0
+NP_VIDEO_TRANSITION_FIX ?= 1
+NP_RGB24_SCANOUT_ADAPTER ?= 1
 EE_CFLAGS += -DNP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER)
 EE_CFLAGS += -DNP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
 EE_CFLAGS += -DNP_VIDEO_TRANSITION_FIX=$(NP_VIDEO_TRANSITION_FIX)

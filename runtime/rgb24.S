@@ -1,4 +1,4 @@
-/* Default-off POPS adapter for direct PS24 scanout on an unchanged test host.
+/* Automatic POPS adapter for direct PS24 scanout on both supported platforms.
  * Select the native buffered RGB24 converter; it owns readback, transfer,
  * drawing and display publication. The adapter writes no guest display state,
  * pixels, packets, semaphores or cycles, and preserves every other wide GPR.

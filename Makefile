@@ -7,10 +7,10 @@ EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_LIBS = -lfileXio -lpatches -ldebug
 CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch patch runtime_corrections discmap sha1
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
-NP_MEMORY_ACCESS_ADAPTER ?= 0
+NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
-NP_VIDEO_TRANSITION_FIX ?= 0
-NP_RGB24_SCANOUT_ADAPTER ?= 0
+NP_VIDEO_TRANSITION_FIX ?= 1
+NP_RGB24_SCANOUT_ADAPTER ?= 1
 
 .PHONY: all library runtime inventory
 all: library runtime
