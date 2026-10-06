@@ -161,6 +161,18 @@ np_memory_group_plan_failed:
     .endif
     .endm
 
+    .macro NP_VIDEO_HANDSHAKE
+    lui $a2,0x7000
+    addiu $a2,$a2,0x10f0
+    jal np_video_command_context
+    nop
+    beqz $a3,.Lhandshake_done\@
+    nop
+    jal np_video_producer_record
+    nop
+.Lhandshake_done\@:
+    .endm
+
     NP_MEMORY_GUARD np_memory_lb,lb,0x207ce0
     NP_MEMORY_GUARD np_memory_lh,lh,0x207cf8
     NP_MEMORY_GUARD np_memory_lw,lw,0x207d10
@@ -222,26 +234,6 @@ np_memory_unknown_address:
     NP_MEMORY_WAIT np_memory_wait_video,4
     NP_MEMORY_WAIT np_memory_wait_worker,5
 
-    /* The entry redirect displaces addiu s0,v0,0x10f0. The routine has
-     * already saved its original caller RA at 8(sp). */
-    .globl np_video_trace_entry
-np_video_trace_entry:
-    addiu $sp,$sp,-32
-    sq $v1,0($sp)
-    sq $a0,16($sp)
-    addiu $s0,$v0,0x10f0
-    la $v1,np_video_trace_entries
-    lw $a0,0($v1)
-    addiu $a0,$a0,1
-    sw $a0,0($v1)
-    la $v1,np_video_trace_caller
-    lw $a0,40($sp)
-    sw $a0,0($v1)
-    lq $a0,16($sp)
-    lq $v1,0($sp)
-    jr $ra
-    addiu $sp,$sp,32
-
     /* Both redirects keep their original delay slots. Save every register
      * touched by the recorder, including the 128-bit native result. */
     .macro NP_VIDEO_SAVE
@@ -257,6 +249,65 @@ np_video_trace_entry:
     sq $10,128($sp)
     sq $ra,144($sp)
     .endm
+
+    /* The semaphore wait at 0x21aec8 has already returned. During the
+     * demonstrated pending NTSC transition, test the cached native CRT's
+     * interlace state rather than the uncommitted requested state. All
+     * other tuples retain the native predicate and branch-likely semantics.
+     * No guest field, semaphore, queue or cycle budget is changed. */
+    .globl np_video_interlace_applied
+np_video_interlace_applied:
+    addiu $sp,$sp,-48
+    sq $v1,0($sp)
+    sq $a0,16($sp)
+    sq $a1,32($sp)
+    lw $v0,0x2214($s0)
+    li $v1,1
+    bne $v0,$v1,9f
+    nop
+    lw $a1,0x22a4($s0)
+    bne $a1,$v1,9f
+    nop
+    lw $a1,0x264c($s0)
+    bnez $a1,9f
+    nop
+    lw $a1,0x2218($s0)
+    bnez $a1,9f
+    nop
+    li $v1,2
+    lw $a1,0x2210($s0)
+    bne $a1,$v1,9f
+    nop
+    lui $a0,0x30
+    addiu $a0,$a0,-4144
+    lw $a1,0($a0)
+    bnez $a1,9f
+    nop
+    lw $a1,4($a0)
+    bne $a1,$v1,9f
+    nop
+    lw $a1,8($a0)
+    li $v1,1
+    bne $a1,$v1,9f
+    nop
+    la $v1,np_video_transition_selected
+    lw $a1,0($v1)
+    addiu $a1,$a1,1
+    sw $a1,0($v1)
+    lw $v0,0($a0)
+9:
+    lq $a1,32($sp)
+    lq $a0,16($sp)
+    lq $v1,0($sp)
+    addiu $sp,$sp,48
+    beqz $v0,1f
+    nop
+    j 0x21aee8
+    nop
+1:
+    j 0x21af0c
+    ld $s0,0($sp)
+
     .macro NP_VIDEO_RESTORE
     lq $ra,144($sp)
     lq $10,128($sp)
@@ -270,6 +321,36 @@ np_video_trace_entry:
     lq $v0,0($sp)
     addiu $sp,$sp,160
     .endm
+
+    /* Entry snapshot uses the otherwise idle main-thread producer ring.
+     * The original caller is still saved by POPS at 8(original sp). */
+    .globl np_video_trace_entry
+np_video_trace_entry:
+    addiu $s0,$v0,0x10f0
+    NP_VIDEO_SAVE
+    la $8,np_video_trace_entries
+    lw $v0,0($8)
+    addiu $v0,$v0,1
+    sw $v0,0($8)
+    la $9,np_video_trace_caller
+    lw $v1,168($sp)
+    sw $v1,0($9)
+    dsll32 $a1,$v0,0
+    dsrl32 $a1,$a1,0
+    dsll32 $v1,$v1,0
+    or $a1,$a1,$v1
+    li $a0,4
+    move $a2,$s0
+    jal np_video_command_context
+    nop
+    beqz $a3,1f
+    nop
+    jal np_video_producer_record
+    nop
+1:
+    NP_VIDEO_RESTORE
+    jr $ra
+    nop
 
     .globl np_video_trace_decision
 np_video_trace_decision:
@@ -373,6 +454,270 @@ np_video_trace_record:
     sw $10,60($8)
     jr $ra
     nop
+    /* Separate interrupt, main-thread and worker rings prevent cross-context writers.
+     * CSR is the original single read; replay its shift after recording it. */
+    .globl np_video_trace_csr
+np_video_trace_csr:
+    ld $v0,0($v1)
+    NP_VIDEO_SAVE
+    li $a0,1
+    move $a1,$v0
+    move $a2,$s0
+    la $a3,np_video_csr_written
+    dsrl $v0,$a1,13
+    andi $v0,$v0,1
+    sll $v0,$v0,2
+    addu $9,$a3,$v0
+    lw $v0,4($9)
+    addiu $v0,$v0,1
+    sw $v0,4($9)
+    sw $a1,12($a3)
+    jal np_video_producer_record
+    nop
+    NP_VIDEO_RESTORE
+    j 0x21cd94
+    dsll $v0,$v0,19
+
+    /* Original sd s0,0(sp) remains in the redirect's delay slot. */
+    .globl np_video_trace_command
+np_video_trace_command:
+    NP_VIDEO_SAVE
+    li $a0,2
+    move $a1,$s2
+    move $a2,$s1
+    jal np_video_command_context
+    nop
+    beqz $a3,1f
+    nop
+    jal np_video_producer_record
+    nop
+1:
+    NP_VIDEO_RESTORE
+    j 0x221730
+    srl $v1,$s2,24
+
+    /* The original branch delay slot has already published the latch. */
+    .globl np_video_trace_latch
+np_video_trace_latch:
+    NP_VIDEO_SAVE
+    li $a0,3
+    move $a1,$s2
+    move $a2,$s1
+    jal np_video_command_context
+    nop
+    beqz $a3,1f
+    nop
+    jal np_video_producer_record
+    nop
+1:
+    NP_VIDEO_RESTORE
+    j 0x221c48
+    nop
+
+    /* Redirect the original tail jumps, retaining their stack-pop delay
+     * slots. Each wrapper calls the original target exactly once. */
+    .globl np_video_trace_reset
+np_video_trace_reset:
+    NP_VIDEO_SAVE
+    li $a0,5
+    ld $a1,32($sp)
+    NP_VIDEO_HANDSHAKE
+    NP_VIDEO_RESTORE
+    addiu $sp,$sp,-16
+    sq $ra,0($sp)
+    jal 0x21ca60
+    nop
+    lq $ra,0($sp)
+    addiu $sp,$sp,16
+    NP_VIDEO_SAVE
+    li $a0,6
+    move $a1,$v0
+    NP_VIDEO_HANDSHAKE
+    NP_VIDEO_RESTORE
+    jr $ra
+    nop
+
+    .globl np_video_trace_crt
+np_video_trace_crt:
+    NP_VIDEO_SAVE
+    lw $a1,32($sp)
+    andi $a1,$a1,255
+    lw $v0,48($sp)
+    andi $v0,$v0,255
+    sll $v0,$v0,8
+    or $a1,$a1,$v0
+    lw $v0,64($sp)
+    andi $v0,$v0,255
+    sll $v0,$v0,16
+    or $a1,$a1,$v0
+    li $a0,7
+    NP_VIDEO_HANDSHAKE
+    NP_VIDEO_RESTORE
+    addiu $sp,$sp,-16
+    sq $ra,0($sp)
+    jal 0x22e420
+    nop
+    lq $ra,0($sp)
+    addiu $sp,$sp,16
+    NP_VIDEO_SAVE
+    li $a0,8
+    move $a1,$v0
+    NP_VIDEO_HANDSHAKE
+    NP_VIDEO_RESTORE
+    jr $ra
+    nop
+
+/* Pinned graphics-worker stack: 0x852980 + 0x8000. Pinned main-thread setup
+ * requests the top 1 MiB of the checked 32 MiB EE RAM. Unknown stacks produce
+ * a sticky diagnostic flag, never a shared fallback ring or a native call. */
+np_video_command_context:
+    addiu $9,$sp,160
+    li $8,0x852980
+    sltu $v0,$9,$8
+    bnez $v0,1f
+    nop
+    li $8,0x85a980
+    sltu $v0,$9,$8
+    beqz $v0,1f
+    nop
+    la $a3,np_video_worker_written
+    jr $ra
+    nop
+1:
+    li $8,0x1f00000
+    sltu $v0,$9,$8
+    bnez $v0,2f
+    nop
+    li $8,0x2000000
+    sltu $v0,$9,$8
+    beqz $v0,2f
+    nop
+    la $a3,np_video_command_written
+    jr $ra
+    nop
+2:
+    la $8,np_video_unknown_context
+    li $v0,1
+    sw $v0,0($8)
+    jr $ra
+    move $a3,$zero
+
+/* Per-context 32-record ring, 16 words each. Only record framing is coherent;
+ * the guest fields remain sequential samples, including interrupt changes. */
+np_video_producer_record:
+    lw $9,0($a3)
+    addiu $10,$9,1
+    sw $10,0($a3)
+    andi $9,$9,31
+    sll $9,$9,6
+    addiu $8,$a3,16
+    addu $8,$8,$9
+    sw $zero,60($8)
+    sll $10,$10,1
+    ori $10,$10,1
+    sw $10,0($8)
+    sw $a0,4($8)
+    sw $a1,8($8)
+    dsrl $v0,$a1,32
+    sw $v0,12($8)
+    sltiu $v0,$a0,4
+    beqz $v0,np_video_handshake_fields
+    nop
+    lw $v0,0x225c($a2)
+    sw $v0,16($8)
+    lw $v0,0x2268($a2)
+    sw $v0,20($8)
+    lw $v0,0x21c8($a2)
+    sw $v0,24($8)
+    lw $v0,0x264c($a2)
+    sw $v0,28($8)
+    lw $v0,0x2214($a2)
+    sw $v0,32($8)
+    lw $v0,0x2258($a2)
+    sw $v0,36($8)
+    lw $v0,0x223c($a2)
+    sw $v0,40($8)
+    lw $v0,0x22c4($a2)
+    sw $v0,44($8)
+    lw $v0,0x22a8($a2)
+    sw $v0,48($8)
+    lw $v0,0x22a4($a2)
+    sw $v0,52($8)
+    addiu $v0,$sp,160
+    sw $v0,56($8)
+np_video_producer_finish:
+    addiu $10,$10,1
+    sw $10,60($8)
+    jr $ra
+    nop
+
+/* Kinds 4..8 reuse the 16-word producer record: entry, reset begin/end,
+ * actual CRT syscall begin/end. Each counter retains its original sole
+ * context writer. Bounds bracket field reads, not an atomic guest snapshot. */
+np_video_handshake_fields:
+    la $9,np_video_worker_written
+    lw $v0,0($9)
+    sw $v0,44($8)
+    la $9,np_video_csr_written
+    lw $v0,0($9)
+    sw $v0,52($8)
+    lw $v0,0x225c($a2)
+    sw $v0,16($8)
+    lw $v0,0x2268($a2)
+    sw $v0,20($8)
+    lw $v0,0x21c8($a2)
+    sw $v0,24($8)
+    li $v0,4
+    bne $a0,$v0,1f
+    nop
+    dsrl32 $v0,$a1,0
+    b 2f
+    nop
+1:
+    lw $v0,144($sp)
+2:
+    sw $v0,32($8)
+    lw $v0,0x2258($a2)
+    sw $v0,36($8)
+    lw $v0,0x2214($a2)
+    andi $v1,$v0,1
+    lw $v0,0x264c($a2)
+    sltu $v0,$zero,$v0
+    sll $v0,$v0,1
+    or $v1,$v1,$v0
+    lw $v0,0x22a4($a2)
+    sltu $v0,$zero,$v0
+    sll $v0,$v0,2
+    or $v1,$v1,$v0
+    lw $v0,0x2218($a2)
+    andi $v0,$v0,1
+    sll $v0,$v0,3
+    or $v1,$v1,$v0
+    lw $v0,0x2210($a2)
+    andi $v0,$v0,255
+    sll $v0,$v0,8
+    or $v1,$v1,$v0
+    sw $v1,28($8)
+    lui $9,0x30
+    addiu $9,$9,-4144
+    lw $v0,0($9)
+    andi $v1,$v0,255
+    lw $v0,4($9)
+    andi $v0,$v0,255
+    sll $v0,$v0,8
+    or $v1,$v1,$v0
+    lw $v0,8($9)
+    andi $v0,$v0,255
+    sll $v0,$v0,16
+    or $v1,$v1,$v0
+    sw $v1,40($8)
+    la $9,np_video_worker_written
+    lw $v0,0($9)
+    sw $v0,48($8)
+    la $9,np_video_csr_written
+    lw $v0,0($9)
+    b np_video_producer_finish
+    sw $v0,56($8)
     .balign 4
     .globl np_memory_code_end
 np_memory_code_end:
@@ -386,6 +731,9 @@ np_memory_emitted:
     .word 0
     .globl np_memory_group_emitted
 np_memory_group_emitted:
+    .word 0
+    .globl np_video_transition_selected
+np_video_transition_selected:
     .word 0
     .globl np_memory_wait_records
 np_memory_wait_records:
@@ -409,6 +757,31 @@ np_video_wait_result:
     .balign 16
 np_video_trace_records:
     .space 4096
+    .balign 16
+    .globl np_video_csr_written,np_video_csr_records
+np_video_csr_written:
+    .word 0
+    .globl np_video_csr_zero,np_video_csr_one,np_video_csr_last
+np_video_csr_zero:
+    .word 0
+np_video_csr_one:
+    .word 0
+np_video_csr_last:
+    .word 0
+np_video_csr_records:
+    .space 2048
+    .globl np_video_command_written,np_video_command_records
+np_video_command_written:
+    .space 16
+np_video_command_records:
+    .space 2048
+    .globl np_video_worker_written,np_video_worker_records,np_video_unknown_context
+np_video_worker_written:
+    .space 16
+np_video_worker_records:
+    .space 2048
+np_video_unknown_context:
+    .word 0
 np_memory_plan_error:
     .asciz "PSXCORE rejected=memory-emitter-reservation\n"
 np_memory_group_error:

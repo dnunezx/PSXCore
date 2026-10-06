@@ -34,6 +34,45 @@ extern void np_memory_group_finalize(void);
 extern void np_memory_wait_writer(void),np_memory_wait_writer_tail(void),np_memory_wait_dma(void);
 extern void np_memory_wait_reader(void),np_memory_wait_video(void),np_memory_wait_worker(void);
 extern void np_video_trace_entry(void),np_video_trace_decision(void),np_video_trace_exit(void);
+extern void np_video_trace_csr(void),np_video_trace_command(void),np_video_trace_latch(void);
+extern void np_video_trace_reset(void),np_video_trace_crt(void);
+extern void np_video_interlace_applied(void);
+extern void np_rgb24_buffered(void),np_rgb24_dispatch(void);
+static NpPatchSet patch_set;
+static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#if NP_VIDEO_TRANSITION_FIX && !NP_MEMORY_ACCESS_ADAPTER
+#error "The video transition candidate requires the memory adapter candidate"
+#endif
+#if NP_RGB24_SCANOUT_ADAPTER
+/* Use the pinned POPS native RGB24 converter instead of direct PS24 scanout.
+ * Both dispatch and buffer selection are scoped to RGB24; the native mode
+ * transition restores ordinary scanout. No pixel/packet or guest state writes. */
+static int install_rgb24_scanout_adapter(const NpElf *elf) {
+    static const uint32_t sites[2]={0x222280,0x221ce4};
+    static const uint32_t expected[2][2]={
+        {0x8e0222a0,0x30420002},{0x3c020001,0x00621024}};
+    const uintptr_t hooks[2]={(uintptr_t)np_rgb24_buffered,(uintptr_t)np_rgb24_dispatch};
+    for(unsigned j=0;j<2;++j)
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+    for(unsigned j=0;j<2;++j) {
+        int found=0;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
+                const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(words[0]!=expected[j][0] || words[1]!=expected[j][1])return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    for(unsigned j=0;j<2;++j) {
+        uint32_t replacement[2]={0x08000000u|((uint32_t)hooks[j]>>2),0};
+        if(np_patch_add(&patch_set,sites[j],expected[j],replacement,8))return -1;
+    }
+    return 0;
+}
+#endif
 extern uint32_t np_disc_probe_enabled;
 extern uint32_t np_firmware_license_enabled;
 extern uint32_t np_asset_trace_enabled;
@@ -43,7 +82,6 @@ extern void np_save_mount_hook(void);
 extern void np_save_open_hook(void),np_save_write_hook(void),np_save_close_hook(void);
 extern void np_save_rename_hook(void),np_save_sync_hook(void),np_save_wait_hook(void);
 extern void np_save_sema_hook(void),np_save_thread_hook(void),np_save_start_hook(void);
-static NpPatchSet patch_set;
 static int queue_word(uint32_t address, uint32_t expected, uint32_t replacement) {
     return np_patch_add(&patch_set,address,&expected,&replacement,4)?-1:0;
 }
@@ -73,6 +111,28 @@ static int install_memory_access_adapter(const NpElf *elf) {
     return 0;
 }
 #endif
+#if NP_VIDEO_TRANSITION_FIX
+/* Select the applied interlace state at the pinned wait's existing test.
+ * Validate the original branch-likely delay load even though it stays intact. */
+static int install_video_transition_fix(const NpElf *elf) {
+    const uint32_t site=0x21aedc;
+    const uint32_t expected[3]={0x8e022214,0x5040000a,0xdfb00000};
+    const uintptr_t hook=(uintptr_t)np_video_interlace_applied;
+    int found=0;
+    if(hook<0xf0000 || hook>=0xf7000 || (hook&3))return -1;
+    for(unsigned i=0;i<elf->count;++i) {
+        const NpSegment *s=&elf->segments[i];
+        if(s->address<=site && site+12<=s->address+s->filesz) {
+            const uint32_t *words=(const void *)(NP_BOOT_STAGE+s->offset+site-s->address);
+            if(memcmp(words,expected,sizeof(expected)))return -1;
+            found=1;break;
+        }
+    }
+    if(!found)return -1;
+    return queue_word(site,expected[0],0x08000000u|((uint32_t)hook>>2)) ||
+           queue_word(site+4,expected[1],0)?-1:0;
+}
+#endif
 #if NP_MEMORY_ACCESS_TRACE && NP_MEMORY_ACCESS_ADAPTER
 static int install_memory_wait_trace(const NpElf *elf) {
     const uint32_t sites[6]={0x21a8a0,0x21a9c8,0x21ab98,0x21adb8,0x21aec8,0x21c650};
@@ -100,12 +160,16 @@ static int install_memory_wait_trace(const NpElf *elf) {
 /* The video waiter has one pinned direct caller. Observe its entry, exact
  * loop comparison and common exit without changing either branch target. */
 static int install_video_progress_trace(const NpElf *elf) {
-    const uint32_t sites[3]={0x21aec0,0x21af00,0x21af0c};
-    const uint32_t expected[3][2]={{0x245010f0,0x00000000},
-        {0x1083fff1,0x00000000},{0x3c048000,0xdfbf0008}};
-    const uintptr_t hooks[3]={(uintptr_t)np_video_trace_entry,
-        (uintptr_t)np_video_trace_decision,(uintptr_t)np_video_trace_exit};
-    for(unsigned j=0;j<3;++j) {
+    const uint32_t sites[8]={0x21aec0,0x21af00,0x21af0c,0x21cd8c,0x221728,0x221c34,0x2217e0,0x23ad48};
+    const uint32_t expected[8][2]={{0x245010f0,0x00000000},
+        {0x1083fff1,0x00000000},{0x3c048000,0xdfbf0008},
+        {0xdc620000,0x000214f8},{0x00121e02,0xffb00000},{0x10000004,0xac822268},
+        {0x08087298,0x27bd0030},{0x0808b908,0x27bd0050}};
+    const uintptr_t hooks[8]={(uintptr_t)np_video_trace_entry,
+        (uintptr_t)np_video_trace_decision,(uintptr_t)np_video_trace_exit,
+        (uintptr_t)np_video_trace_csr,(uintptr_t)np_video_trace_command,(uintptr_t)np_video_trace_latch,
+        (uintptr_t)np_video_trace_reset,(uintptr_t)np_video_trace_crt};
+    for(unsigned j=0;j<8;++j) {
         int found=0;
         if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
         for(unsigned i=0;i<elf->count;++i) {
@@ -118,9 +182,12 @@ static int install_video_progress_trace(const NpElf *elf) {
         }
         if(!found)return -1;
     }
-    for(unsigned j=0;j<3;++j) {
+    for(unsigned j=0;j<8;++j) {
         const uint32_t opcode=(j==0?0x0c000000u:0x08000000u)|((uint32_t)hooks[j]>>2);
         if(queue_word(sites[j],expected[j][0],opcode))return -1;
+        /* Replay the CSR load and shift together: the redirected delay slot
+         * must not consume v0 before the original hardware read. */
+        if(j==3 && queue_word(sites[j]+4,expected[j][1],0))return -1;
     }
     return 0;
 }
@@ -335,6 +402,12 @@ int main(void) {
             trace("PSXCORE rejected=memory-access-patch-plan\n");goto rejected;
         }
         trace("PSXCORE memory-access-adapter=1 native-io=explicit scope=runtime experimental=yes\n");
+#if NP_VIDEO_TRANSITION_FIX
+        if(install_video_transition_fix(&elf)) {
+            trace("PSXCORE rejected=video-transition-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE video-transition-fix=1 state=applied-interlace pending=guarded scope=runtime experimental=yes\n");
+#endif
 #if NP_MEMORY_ACCESS_TRACE
         if(install_memory_wait_trace(&elf)) {
             trace("PSXCORE rejected=memory-wait-trace-plan\n");goto rejected;
@@ -344,6 +417,14 @@ int main(void) {
         }
         trace("PSXCORE memory-wait-trace=1 scope=guest calls=6 experimental=yes\n");
 #endif
+    }
+#endif
+#if NP_RGB24_SCANOUT_ADAPTER
+    if(native && request.environment==NP_ENV_PCSX2 && repair) {
+        if(install_rgb24_scanout_adapter(&elf)) {
+            trace("PSXCORE rejected=rgb24-scanout-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE rgb24-scanout-adapter=1 scanout=buffered transport=native scope=runtime experimental=yes\n");
     }
 #endif
     if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
