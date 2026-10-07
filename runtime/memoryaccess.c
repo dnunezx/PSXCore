@@ -19,9 +19,11 @@ int np_memory_emit_rewrite(uint32_t instruction, uint32_t ps1_base,
     const uint32_t rt = (instruction >> 16) & 31;
     uint32_t first, second, third;
     if (op & 8) {
-        first = offset;
+        /* POPS's SWC2 path supplies its value in EE a3. Capture the value
+         * before the signed offset argument replaces that register. */
+        first = (rt << 21) | 0x0000282du;
         second = jump;
-        third = (rt << 21) | 0x0000282du; /* native store-value delay slot */
+        third = offset;
     } else {
         first = jump;
         second = offset;                 /* native signed-offset delay slot */
