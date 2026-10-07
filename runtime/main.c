@@ -40,6 +40,48 @@ extern void np_video_interlace_applied(void);
 extern void np_rgb24_buffered(void),np_rgb24_dispatch(void);
 static NpPatchSet patch_set;
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#if NP_GPU_DMA_RASTER_SPLIT
+#if NP_GPU_DMA_RASTER_SPLIT != 1
+#error "GPU DMA raster split accepts a boolean build flag only"
+#endif
+extern void np_dma_fill_cost(void),np_dma_sprite_cost(void),np_dma_polygon_cost(void);
+extern void np_dma_line_cost(void),np_dma_copy_cost(void);
+extern void np_dma_reset_linked(void),np_dma_reset_block(void),np_dma_harvest_cost(void);
+static int install_gpu_dma_raster_split(const NpElf *elf) {
+    const uint32_t sites[8]={0x21d598,0x21eb34,0x21f9e4,0x220654,
+        0x225f14,0x21ae40,0x21ae68,0x21aa68};
+    const uint32_t expected[8][3]={{0x00822021,0xaca42260,0},
+        {0x00431021,0xac822260,0},{0x00431021,0xac822260,0},
+        {0x00431021,0xac822260,0},{0x00431021,0xac822260,0},
+        {0xac402260,0xac54226c,0},{0xac602260,0xac60226c,0},
+        {0xaca3226c,0x03e00008,0x42000038}};
+    const uintptr_t hooks[8]={(uintptr_t)np_dma_fill_cost,(uintptr_t)np_dma_sprite_cost,
+        (uintptr_t)np_dma_polygon_cost,(uintptr_t)np_dma_line_cost,(uintptr_t)np_dma_copy_cost,
+        (uintptr_t)np_dma_reset_linked,(uintptr_t)np_dma_reset_block,(uintptr_t)np_dma_harvest_cost};
+    /* Validate the whole revision-pinned plan before adding any replacement.
+     * Native mode/quota delay slots survive both counter-reset redirects. */
+    for(unsigned j=0;j<8;++j) {
+        const uint32_t length=j==7?12:8;
+        int found=0;
+        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(s->address<=sites[j] && sites[j]+length<=s->address+s->filesz) {
+                const void *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(memcmp(words,expected[j],length))return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    for(unsigned j=0;j<8;++j) {
+        uint32_t replacement[3]={0x08000000u|((uint32_t)hooks[j]>>2),
+            j==5 || j==6?expected[j][1]:0,0};
+        if(np_patch_add(&patch_set,sites[j],expected[j],replacement,j==7?12:8))return -1;
+    }
+    return 0;
+}
+#endif
 #if NP_AUDIO_GAP_DECLICK
 extern void np_audio_gap_declick(void);
 /* The native output callback copies/zero-fills 251 input stereo frames here,
@@ -474,6 +516,14 @@ int main(void) {
     }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+#if NP_GPU_DMA_RASTER_SPLIT
+    if(native) {
+        if(install_gpu_dma_raster_split(&elf)) {
+            trace("PSXCORE rejected=gpu-dma-raster-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE gpu-dma-raster-split=1 scope=shared native-render-budget=preserved experimental=yes\n");
+    }
+#endif
 #if NP_AUDIO_GAP_DECLICK
     if(native) {
         if(install_audio_gap_adapter(&elf)) {

@@ -788,7 +788,15 @@ np_video_csr_one:
 np_video_csr_last:
     .word 0
 np_video_csr_records:
+#if NP_GPU_DMA_RASTER_SPLIT
+#if NP_MEMORY_ACCESS_TRACE
+#error "DMA accounting owns the inactive CSR trace area"
+#endif
+#include "dmacycles.S"
+    .space 2048-(.-np_video_csr_records)
+#else
     .space 2048
+#endif
     .globl np_video_command_written,np_video_command_records
 np_video_command_written:
     .space 16
