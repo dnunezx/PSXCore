@@ -37,7 +37,7 @@ extern void np_video_trace_entry(void),np_video_trace_decision(void),np_video_tr
 extern void np_video_trace_csr(void),np_video_trace_command(void),np_video_trace_latch(void);
 extern void np_video_trace_reset(void),np_video_trace_crt(void);
 extern void np_video_interlace_applied(void);
-extern void np_rgb24_buffered(void),np_rgb24_dispatch(void);
+extern void np_rgb24_buffered(void),np_rgb24_dispatch(void),np_rgb24_update(void);
 static NpPatchSet patch_set;
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
 #if NP_GPU_DMA_RASTER_SPLIT
@@ -158,16 +158,21 @@ static int install_gp0_packet_adapter(const NpElf *elf) {
 #endif
 #if NP_RGB24_SCANOUT_ADAPTER
 /* Use the pinned POPS native RGB24 converter instead of direct PS24 scanout.
- * Both dispatch and buffer selection are scoped to RGB24; the native mode
- * transition restores ordinary scanout. No pixel/packet or guest state writes. */
+ * Dispatch, buffer selection and incremental updates are scoped to RGB24;
+ * the native mode transition restores ordinary scanout. */
 static int install_rgb24_scanout_adapter(const NpElf *elf) {
-    static const uint32_t sites[2]={0x222280,0x221ce4};
-    static const uint32_t expected[2][2]={
-        {0x8e0222a0,0x30420002},{0x3c020001,0x00621024}};
-    const uintptr_t hooks[2]={(uintptr_t)np_rgb24_buffered,(uintptr_t)np_rgb24_dispatch};
-    for(unsigned j=0;j<2;++j)
+    static const uint32_t sites[5]={0x222280,0x221ce4,0x21d284,0x224c00,0x225eb8};
+    static const uint32_t expected[5][2]={
+        {0x8e0222a0,0x30420002},{0x3c020001,0x00621024},
+        {0x0c088996,0x2408ffff},{0x0c088996,0x30a501ff},
+        {0x0c088996,0x8fa70040}};
+    const uintptr_t hooks[5]={(uintptr_t)np_rgb24_buffered,(uintptr_t)np_rgb24_dispatch,
+        (uintptr_t)np_rgb24_update,(uintptr_t)np_rgb24_update,(uintptr_t)np_rgb24_update};
+    for(unsigned j=0;j<5;++j)
         if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
-    for(unsigned j=0;j<2;++j) {
+    /* Validate the complete plan first; update calls retain their native
+     * argument-building delay slots and link register conventions. */
+    for(unsigned j=0;j<5;++j) {
         int found=0;
         for(unsigned i=0;i<elf->count;++i) {
             const NpSegment *s=&elf->segments[i];
@@ -179,8 +184,9 @@ static int install_rgb24_scanout_adapter(const NpElf *elf) {
         }
         if(!found)return -1;
     }
-    for(unsigned j=0;j<2;++j) {
-        uint32_t replacement[2]={0x08000000u|((uint32_t)hooks[j]>>2),0};
+    for(unsigned j=0;j<5;++j) {
+        uint32_t replacement[2]={(j<2?0x08000000u:0x0c000000u)|((uint32_t)hooks[j]>>2),
+            j<2?0:expected[j][1]};
         if(np_patch_add(&patch_set,sites[j],expected[j],replacement,8))return -1;
     }
     return 0;
