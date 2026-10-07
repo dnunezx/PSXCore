@@ -90,3 +90,80 @@ int np_memory_group_rewrite(uint32_t *end, unsigned count, unsigned ps1_base,
     }
     return (int)changed;
 }
+
+#if defined(__mips__)
+__attribute__((section("._psxcore_return_delay")))
+#endif
+int np_memory_emit_finalize_rewrite(uint32_t instruction, uint32_t ps1_base,
+    uint32_t ps1_target, uint32_t *out, const uint32_t helpers[16],
+    const uint32_t return_helpers[8]) {
+    if (!out) return -1;
+    uint32_t plan[3] = {out[0],out[1],out[2]};
+    int result = np_memory_emit_rewrite(instruction,ps1_base,plan,helpers);
+    if (result != 1) return result;
+    const unsigned op = instruction >> 26, rt = (instruction >> 16) & 31;
+    if (op < 0x28 && ps1_target == 2 && rt >= 8 && (rt <= 25 || rt == 30)) {
+#if defined(__mips__)
+        if ((uintptr_t)out < 0x100000 + 72 || (uintptr_t)out > 0x2000000 - 12)
+            return -1;
+#endif
+        /* Prove the allocated destination contains the old constant return
+         * value. A load's fresh allocation need not initialize its old value.
+         * Pinned generator: publish JR ra's captured target, then construct
+         * a scalar address from the CPU register bank. The callback beginning
+         * directly at the load does not have this prefix and stays native. */
+        const uint32_t immediate = out[-6] >> 26;
+        if ((out[-7] & 0xffff0000u) == (0x3c000000u | (rt << 16)) &&
+            (immediate == 9 || immediate == 13) &&
+            (out[-6] & 0x03ff0000u) == ((rt << 21) | (rt << 16)) &&
+            out[-5] == 0xaf9e0000 &&
+            out[-4] == (0x8f880000u | (0x10 + ps1_base * 4)) &&
+            out[-3] == 0x3c054000 && out[-2] == 0x00282024 && out[-1] == 0x00a42021) {
+#if defined(__mips__)
+            /* The allocator may reuse another PS1 register's native slot.
+             * Prove these constants belong to PS1 v0 using the pinned block
+             * checksum prologue and original source, rather than assuming
+             * every native LUI/immediate pair defines the load's old value. */
+            if ((out[-18] & 0xffff0000u) != 0x3c020000 ||
+                (out[-17] & 0xffff0000u) != 0x3c030000 ||
+                (out[-16] & 0xffff0000u) != 0x8c420000 ||
+                (out[-15] & 0xffff0000u) != 0x8c630000 ||
+                (out[-14] & 0xffff0000u) != 0x3c040000 || out[-13] != 0x00431021 ||
+                (out[-12] & 0xffff0000u) != 0x34830000 || out[-11] != 0x10430003 ||
+                out[-10] || out[-9] != 0x0808207c || out[-8] != 0x24020006) goto publish;
+            uint32_t address = (out[-18] << 16) + (int16_t)out[-16];
+            uint32_t second = (out[-17] << 16) + (int16_t)out[-15];
+            if (address < 0x40000000 || address > 0x407ffff0 || (address & 3) ||
+                second != address + 4) goto publish;
+            const volatile uint32_t *source = (const volatile uint32_t *)(uintptr_t)address;
+            if (source[0] != (0x3c020000u | (out[-7] & 0xffff)) ||
+                source[1] != ((immediate << 26) | 0x00420000u | (out[-6] & 0xffff)) ||
+                source[2] != 0x03e00008 ||
+                source[3] != ((op << 26) | (ps1_base << 21) | 0x00020000u |
+                              (instruction & 0xffff))) goto publish;
+#endif
+            if (!return_helpers) return -1;
+            const uint32_t helper = return_helpers[op - 0x20];
+            if (!helper || helper < 0xf7000 || helper >= 0xf7800 || (helper & 3)) return -1;
+            plan[0] = 0x0c000000u | (helper >> 2);
+        }
+    }
+#if defined(__mips__)
+publish:
+#endif
+    out[0] = plan[0]; out[1] = plan[1]; out[2] = plan[2];
+    return 1;
+}
+
+#if defined(__mips__)
+__attribute__((section("._psxcore_return_delay")))
+#endif
+int np_memory_return_load_cancelled(uint32_t instruction) {
+    unsigned op = instruction >> 26;
+    if (op >= 9 && op <= 15) return ((instruction >> 16) & 31) == 2;
+    if (op || ((instruction >> 11) & 31) != 2) return 0;
+    unsigned fn = instruction & 63;
+    /* Shifts and nontrapping integer ALU operations. */
+    if (fn < 32) return (0xddu >> fn) & 1;
+    return (0xcfau >> (fn - 32)) & 1;
+}

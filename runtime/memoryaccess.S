@@ -14,9 +14,12 @@ np_memory_emit_finalize:
     sq $12,32($sp) /* native output cursor; EE ABI names register 12 t0 */
     sll $a0,$a0,0 /* normalize the native word to the EE C scalar ABI */
     move $a1,$s4
-    addiu $a2,$12,-12
-    la $a3,np_memory_helpers
-    jal np_memory_emit_rewrite
+    /* The checked 0x205d34 redirect captured the PS1 target in a2 before
+     * native s0 restoration. Merge accesses do not select return helpers. */
+    addiu $a3,$12,-12
+    la $8,np_memory_helpers
+    la $9,np_memory_return_helpers
+    jal np_memory_emit_finalize_rewrite
     nop
     bltz $v0,np_memory_plan_failed
     nop
@@ -29,6 +32,7 @@ np_memory_emit_finalize:
 1:
     lq $12,32($sp)
     lq $ra,16($sp)
+    ld $s0,64($sp) /* original 16(native sp), including the SP-base branch */
     move $v0,$12 /* displaced final cursor result */
     jr $ra
     addiu $sp,$sp,48
@@ -732,6 +736,7 @@ np_video_handshake_fields:
     .balign 4
     .globl np_memory_code_end
 np_memory_code_end:
+    .globl np_memory_helpers
 np_memory_helpers:
     .word np_memory_lb,np_memory_lh,0,np_memory_lw
     .word np_memory_lbu,np_memory_lhu,0,0

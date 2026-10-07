@@ -209,12 +209,13 @@ static int queue_word(uint32_t address, uint32_t expected, uint32_t replacement)
  * can run. The original epilogue delay slot is retained. */
 #if NP_MEMORY_ACCESS_ADAPTER
 static int install_memory_access_adapter(const NpElf *elf) {
-    const uint32_t sites[2]={0x205d4c,0x206358};
-    const uint32_t expected[2][2]={{0x0180102d,0xdfb10018},{0x0220102d,0xdfb00030}};
+    const uint32_t sites[3]={0x205d4c,0x206358,0x205d34};
+    const uint32_t expected[3][2]={{0x0180102d,0xdfb10018},{0x0220102d,0xdfb00030},
+        {0xdfb00010,0xad800000}};
     const uintptr_t hooks[2]={(uintptr_t)np_memory_emit_finalize,(uintptr_t)np_memory_group_finalize};
-    for(unsigned j=0;j<2;++j) {
+    for(unsigned j=0;j<3;++j) {
         int found=0;
-        if(hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3))return -1;
+        if(j<2 && (hooks[j]<0xf0000 || hooks[j]>=0xf7000 || (hooks[j]&3)))return -1;
         for(unsigned i=0;i<elf->count;++i) {
             const NpSegment *s=&elf->segments[i];
             if(s->address<=sites[j] && sites[j]+8<=s->address+s->filesz) {
@@ -225,8 +226,9 @@ static int install_memory_access_adapter(const NpElf *elf) {
         }
         if(!found)return -1;
     }
-    for(unsigned j=0;j<2;++j)
-        if(queue_word(sites[j],expected[j][0],0x0c000000u|((uint32_t)hooks[j]>>2)))return -1;
+    for(unsigned j=0;j<3;++j)
+        if(queue_word(sites[j],expected[j][0],j==2?0x0200302d:
+                      0x0c000000u|((uint32_t)hooks[j]>>2)))return -1;
     return 0;
 }
 #endif
