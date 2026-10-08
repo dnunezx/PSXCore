@@ -41,6 +41,7 @@ extern void np_rgb24_buffered(void),np_rgb24_dispatch(void),np_rgb24_update(void
 static NpPatchSet patch_set;
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
 extern void np_gte_orgb(void),np_gte_orgb_end(void);
+extern void np_gte_irgb(void),np_gte_irgb_end(void);
 static int install_gte_color_adapter(void) {
     /* The pinned ORGB helper shifts to five bits, then PPAC5 discards three
      * more bits. Validate its complete body transactionally before redirecting
@@ -56,6 +57,18 @@ static int install_gte_color_adapter(void) {
     replacement[0]=0x08000000u|((uint32_t)hook>>2);replacement[1]=0;
     for(unsigned i=0;i<2;++i)
         if(np_patch_add(&patch_set,0x2084a0+i*32,expected+i*8,replacement+i*8,32))return -1;
+    /* The matching input helper expands to byte colors with PEXT5, leaving
+     * IR1..IR3 sixteen times too small. Guard its complete native body too. */
+    static const uint32_t irgb_expected[12]={
+        0x8f820220,0x70021788,0x304400ff,0x00022a02,
+        0x00023402,0x30a500ff,0x30c600ff,0xaf8401d4,
+        0xaf8501d8,0xaf8601dc,0x03e00008,0};
+    const uintptr_t input=(uintptr_t)np_gte_irgb,input_end=(uintptr_t)np_gte_irgb_end;
+    if(input<end || input_end<=input || input_end>0xf8000 || (input&3))return -1;
+    uint32_t irgb_replacement[12];memcpy(irgb_replacement,irgb_expected,sizeof(irgb_expected));
+    irgb_replacement[0]=0x08000000u|((uint32_t)input>>2);irgb_replacement[1]=0;
+    if(np_patch_add(&patch_set,0x2084e0,irgb_expected,irgb_replacement,32) ||
+       np_patch_add(&patch_set,0x208500,irgb_expected+8,irgb_replacement+8,16))return -1;
     return 0;
 }
 #if NP_GPU_DMA_RASTER_SPLIT
@@ -626,7 +639,7 @@ int main(void) {
     }
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
-    trace("PSXCORE gte-orgb=rgb555 saturation=0..31 scope=runtime\n");
+    trace("PSXCORE gte-orgb=rgb555 saturation=0..31 irgb=rgb555-to-ir128 scope=runtime\n");
     trace("PSXCORE core-corrections=%u texture-window=repeat scope=runtime\n",
         (unsigned)NP_RUNTIME_CORRECTION_REVISION);
     np_firmware_license_enabled=license;

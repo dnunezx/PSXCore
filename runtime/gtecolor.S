@@ -1,4 +1,4 @@
-/* Shared POPS ORGB conversion. Preserve the native helper's clobber set:
+/* Shared POPS IRGB/ORGB conversion. Preserve the native helpers' clobber set:
  * v0/a0/a1/a2 only; allocated PS1 registers, flags and wide GPRs stay intact. */
     .set noreorder
     .set noat
@@ -31,3 +31,25 @@ np_gte_orgb:
     nop
     .globl np_gte_orgb_end
 np_gte_orgb_end:
+    .balign 16
+    .globl np_gte_irgb
+np_gte_irgb:
+    /* PEXT5 expands RGB555 to 8-bit channels (channel << 3). GTE IRGB
+     * writes require channel << 7; extract directly at that scale. Ignore
+     * bit 15 and upper input bits, without changing GTE flags or IR0. */
+    lw $v0,544($gp)
+    andi $a0,$v0,31
+    sll $a0,$a0,7
+    srl $a1,$v0,5
+    andi $a1,$a1,31
+    sll $a1,$a1,7
+    srl $a2,$v0,10
+    andi $a2,$a2,31
+    sll $a2,$a2,7
+    sw $a0,468($gp)
+    sw $a1,472($gp)
+    sw $a2,476($gp)
+    jr $ra
+    nop
+    .globl np_gte_irgb_end
+np_gte_irgb_end:
