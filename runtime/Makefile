@@ -1,6 +1,6 @@
 EE_BIN = psxcore-runtime-bootstrap.elf
 .DEFAULT_GOAL := all
-EE_OBJS = main.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o rgb24.o gp0.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o
+EE_OBJS = main.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o
 EE_INCS = -I../../include
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 NP_MEMORY_ACCESS_ADAPTER ?= 1
