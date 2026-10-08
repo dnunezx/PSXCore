@@ -14,6 +14,8 @@ NP_GP0_PACKET_COALESCE ?= 1
 NP_GP0_PACKET_TRACE ?= 0
 NP_GP0_SCALAR_WRITE ?= 1
 NP_AUDIO_GAP_DECLICK ?= 1
+NP_SPU_CAPTURE_IRQ ?= 1
+NP_SPU_REVERB_READONLY ?= 1
 NP_VIDEO_TRANSITION_FIX ?= 1
 NP_RGB24_SCANOUT_ADAPTER ?= 1
 NP_INTERLACE_BUFFERED_PRESENT ?= 1
@@ -26,8 +28,8 @@ inventory: $(EE_BIN)
 runtime: | build
 	$(MAKE) -C iop/filebridge
 	mkdir -p build/runtime
-	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/file_storage.c runtime/file_storage.h runtime/dmacycles.S runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S runtime/returndelay.S runtime/gtecolor.S runtime/rgb24.S runtime/gp0.S runtime/audio.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/file.c src/file_patch.c src/vcd.c src/sha1.c src/patch.c src/runtime_corrections.c build/runtime/
-	$(MAKE) -C build/runtime NP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER) NP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE) NP_MEMORY_RAM_FASTPATH=$(NP_MEMORY_RAM_FASTPATH) NP_GP0_PACKET_COALESCE=$(NP_GP0_PACKET_COALESCE) NP_GP0_PACKET_TRACE=$(NP_GP0_PACKET_TRACE) NP_GP0_SCALAR_WRITE=$(NP_GP0_SCALAR_WRITE) NP_AUDIO_GAP_DECLICK=$(NP_AUDIO_GAP_DECLICK) NP_VIDEO_TRANSITION_FIX=$(NP_VIDEO_TRANSITION_FIX) NP_RGB24_SCANOUT_ADAPTER=$(NP_RGB24_SCANOUT_ADAPTER) NP_INTERLACE_BUFFERED_PRESENT=$(NP_INTERLACE_BUFFERED_PRESENT) NP_GPU_DMA_RASTER_SPLIT=$(NP_GPU_DMA_RASTER_SPLIT)
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/file_storage.c runtime/file_storage.h runtime/dmacycles.S runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S runtime/returndelay.S runtime/gtecolor.S runtime/rgb24.S runtime/gp0.S runtime/audio.S runtime/spucapture.S runtime/spureverb.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/file.c src/file_patch.c src/vcd.c src/sha1.c src/patch.c src/runtime_corrections.c build/runtime/
+	$(MAKE) -C build/runtime NP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER) NP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE) NP_MEMORY_RAM_FASTPATH=$(NP_MEMORY_RAM_FASTPATH) NP_GP0_PACKET_COALESCE=$(NP_GP0_PACKET_COALESCE) NP_GP0_PACKET_TRACE=$(NP_GP0_PACKET_TRACE) NP_GP0_SCALAR_WRITE=$(NP_GP0_SCALAR_WRITE) NP_AUDIO_GAP_DECLICK=$(NP_AUDIO_GAP_DECLICK) NP_SPU_CAPTURE_IRQ=$(NP_SPU_CAPTURE_IRQ) NP_SPU_REVERB_READONLY=$(NP_SPU_REVERB_READONLY) NP_VIDEO_TRANSITION_FIX=$(NP_VIDEO_TRANSITION_FIX) NP_RGB24_SCANOUT_ADAPTER=$(NP_RGB24_SCANOUT_ADAPTER) NP_INTERLACE_BUFFERED_PRESENT=$(NP_INTERLACE_BUFFERED_PRESENT) NP_GPU_DMA_RASTER_SPLIT=$(NP_GPU_DMA_RASTER_SPLIT)
 
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal

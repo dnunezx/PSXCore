@@ -772,11 +772,19 @@ np_video_wait_result:
     .space 16
     .balign 16
 np_video_trace_records:
-#if NP_AUDIO_GAP_DECLICK
+#if NP_AUDIO_GAP_DECLICK || NP_SPU_CAPTURE_IRQ || NP_SPU_REVERB_READONLY
 #if NP_MEMORY_ACCESS_TRACE
-#error "Audio gap adapter reuses the inactive video trace ring; enable only one"
+#error "SPU adapters reuse the inactive video trace ring; disable tracing"
 #endif
+#if NP_AUDIO_GAP_DECLICK
 #include "audio.S"
+#endif
+#if NP_SPU_CAPTURE_IRQ
+#include "spucapture.S"
+#endif
+#if NP_SPU_REVERB_READONLY
+#include "spureverb.S"
+#endif
     .space 4096-(.-np_video_trace_records)
 #else
     .space 4096

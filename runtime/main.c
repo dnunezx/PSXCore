@@ -137,6 +137,58 @@ static int install_gpu_dma_raster_split(const NpElf *elf) {
     return 0;
 }
 #endif
+#if NP_SPU_CAPTURE_IRQ
+extern void np_spu_capture_irq(void),np_spu_capture_reset(void),np_spu_capture_end(void);
+static int install_spu_capture_adapter(void) {
+    /* Full firmware identity is checked first. Guard the complete native
+     * cursor update transactionally, including the untouched mask/store. */
+    const uint32_t expected[4]={0x8c62026c,0x005e1021,0x304201ff,0xac62026c};
+    const uintptr_t hook=(uintptr_t)np_spu_capture_irq,end=(uintptr_t)np_spu_capture_end;
+    if(hook<0xf0000 || end<=hook || end>0xf7000 || (hook&3))return -1;
+    const uint32_t replacement[4]={0x08000000u|((uint32_t)hook>>2),0,
+        expected[2],expected[3]};
+    if(np_patch_add(&patch_set,0x211464,expected,replacement,sizeof(expected)))return -1;
+    const uintptr_t reset=(uintptr_t)np_spu_capture_reset;
+    if(reset<hook || reset>=end || (reset&3))return -1;
+    const uint32_t reset_expected[4]={0x0000202d,0xaf808828,0xaf808824,0x0080282d};
+    const uint32_t reset_replacement[4]={0x08000000u|((uint32_t)reset>>2),0,
+        reset_expected[2],reset_expected[3]};
+    return np_patch_add(&patch_set,0x200dd4,reset_expected,reset_replacement,sizeof(reset_expected)) ? -1 : 0;
+}
+#endif
+#if NP_SPU_REVERB_READONLY
+extern void np_spu_reverb_start(void),np_spu_reverb_end(void);
+extern void np_spu_reverb_lsame(void),np_spu_reverb_rsame(void);
+extern void np_spu_reverb_ldiff(void),np_spu_reverb_rdiff(void);
+extern void np_spu_reverb_lapf1(void),np_spu_reverb_rapf1(void);
+extern void np_spu_reverb_lapf2(void),np_spu_reverb_rapf2(void);
+static int install_spu_reverb_write_guards(void) {
+    const uint32_t sites[8]={0x212648,0x212734,0x212850,0x212914,
+        0x212bf8,0x212c90,0x212d38,0x212e30};
+    const uint32_t expected[8][4]={
+        {0xa5480000,0x0004bbc3,0x8f240a44,0x8fa5002c},
+        {0xa52e0000,0x25290002,0x0189282b,0x8fae002c},
+        {0xa6860000,0x26940002,0x8f2f09ec,0x87030000},
+        {0xa5470000,0x254a0002,0x8fac0044,0x8fa2005c},
+        {0xa5870000,0x24073def,0x8f2f0a20,0x0143c021},
+        {0xa5ee0000,0x25ef0002,0xafaf009c,0x240f3e4c},
+        {0xa5ee0000,0x25ef0002,0xafaf00a8,0x0003f00a},
+        {0xa4cc0000,0x24c60002,0x000b5bc3,0x00a6202b}};
+    const uintptr_t hooks[8]={(uintptr_t)np_spu_reverb_lsame,(uintptr_t)np_spu_reverb_rsame,
+        (uintptr_t)np_spu_reverb_ldiff,(uintptr_t)np_spu_reverb_rdiff,
+        (uintptr_t)np_spu_reverb_lapf1,(uintptr_t)np_spu_reverb_rapf1,
+        (uintptr_t)np_spu_reverb_lapf2,(uintptr_t)np_spu_reverb_rapf2};
+    const uintptr_t start=(uintptr_t)np_spu_reverb_start,end=(uintptr_t)np_spu_reverb_end;
+    if(start<0xf0000 || end<=start || end>0xf7000)return -1;
+    for(unsigned i=0;i<8;++i) {
+        if(hooks[i]<start || hooks[i]>=end || (hooks[i]&3))return -1;
+        const uint32_t replacement[4]={0x08000000u|((uint32_t)hooks[i]>>2),0,
+            expected[i][2],expected[i][3]};
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,sizeof(replacement)))return -1;
+    }
+    return 0;
+}
+#endif
 #if NP_AUDIO_GAP_DECLICK
 extern void np_audio_gap_declick(void);
 /* The native output callback copies/zero-fills 251 input stereo frames here,
@@ -608,6 +660,22 @@ int main(int argc,char **argv) {
             trace("PSXCORE rejected=gpu-dma-raster-patch-plan\n");goto rejected;
         }
         trace("PSXCORE gpu-dma-raster-split=1 scope=shared native-render-budget=preserved experimental=yes\n");
+    }
+#endif
+#if NP_SPU_CAPTURE_IRQ
+    if(native) {
+        if(install_spu_capture_adapter()) {
+            trace("PSXCORE rejected=spu-capture-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE spu-capture-irq=1 scope=shared dispatch=native\n");
+    }
+#endif
+#if NP_SPU_REVERB_READONLY
+    if(native) {
+        if(install_spu_reverb_write_guards()) {
+            trace("PSXCORE rejected=spu-reverb-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE spu-reverb-readonly=1 scope=shared filtering=native\n");
     }
 #endif
 #if NP_AUDIO_GAP_DECLICK

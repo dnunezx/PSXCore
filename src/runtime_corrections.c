@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 2) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 3) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -26,5 +26,22 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x06,0x00,0x00,0x10, 0x20,0x01,0x00,0xae,
         0x00,0x00,0xb0,0xdf, 0x02,0x00,0x04,0x24
     };
-    return np_patch_add(set, 0x0020ac4c, dma_expected, dma_corrected, sizeof(dma_expected));
+    error = np_patch_add(set, 0x0020ac4c, dma_expected, dma_corrected, sizeof(dma_expected));
+    if (error) return error;
+    /* CD-ROM Play ignores SetMode bit 0. POPS otherwise advances the audio
+     * track without submitting any CDDA samples when that bit is clear.
+     * Keep the native mute, data-track and failed-sector checks intact. */
+    static const unsigned char cdda_expected[28] = {
+        0x00,0x00,0x02,0x92, 0x01,0x00,0x42,0x30,
+        0xff,0x00,0x42,0x30, 0x09,0x00,0x40,0x10,
+        0x01,0x00,0x02,0x24, 0x08,0x00,0x42,0x52,
+        0x00,0xc2,0x70,0x26
+    };
+    static const unsigned char cdda_corrected[28] = {
+        0x00,0x00,0x02,0x92, 0x01,0x00,0x42,0x30,
+        0xff,0x00,0x42,0x30, 0x00,0x00,0x00,0x00,
+        0x01,0x00,0x02,0x24, 0x08,0x00,0x42,0x52,
+        0x00,0xc2,0x70,0x26
+    };
+    return np_patch_add(set, 0x0020eac8, cdda_expected, cdda_corrected, sizeof(cdda_expected));
 }
