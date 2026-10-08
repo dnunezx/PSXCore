@@ -94,10 +94,10 @@ rgb_update_ordinary:
     .globl np_rgb24_end
 np_rgb24_end:
 #if NP_INTERLACE_BUFFERED_PRESENT
-    /* Opt-in presentation workaround for the demonstrated NTSC PS15/480
+    /* Presentation workaround for the demonstrated NTSC PS15/480
      * tuple. It renders both source fields into native buffered output rather
      * than exposing partially cleared VRAM. This is not cycle-accurate PS1
-     * interlaced rendering; keep it disabled by default pending broader tests.
+     * interlaced rendering; broader game and physical-console tests remain pending.
      * Status, control queues, clocks, options and native buffer ownership stay
      * intact. Nonmatching modes retain the existing selectors and masks. */
     .section ._psxcore_interlace_scanout,"ax",@progbits
