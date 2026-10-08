@@ -18,7 +18,11 @@ np_rgb24_buffered:
     lw $v1,0x21dc($s0)
     lw $v0,0x22a0($s0)
     xori $v1,$v1,0x12
+#if NP_INTERLACE_BUFFERED_PRESENT
+    bnez $v1,np_interlace_buffered
+#else
     bnez $v1,rgb_buffered_exit
+#endif
     nop
     ori $v0,$v0,2
 rgb_buffered_exit:
@@ -40,9 +44,15 @@ np_rgb24_dispatch:
     xori $a0,$a0,0x12
     beqz $a0,rgb_dispatch_select
     nop
+#if NP_INTERLACE_BUFFERED_PRESENT
+    b np_interlace_dispatch
+    nop
+#else
     lw $a0,0x264c($s0)
     beqz $a0,rgb_dispatch_exit
+#endif
     nop
+rgb_dispatch_buffer_continue:
     lw $a0,0x22a0($s0)
     andi $a0,$a0,2
     bnez $a0,rgb_dispatch_exit
@@ -83,4 +93,91 @@ rgb_update_ordinary:
     nop
     .globl np_rgb24_end
 np_rgb24_end:
+#if NP_INTERLACE_BUFFERED_PRESENT
+    /* Opt-in presentation workaround for the demonstrated NTSC PS15/480
+     * tuple. It renders both source fields into native buffered output rather
+     * than exposing partially cleared VRAM. This is not cycle-accurate PS1
+     * interlaced rendering; keep it disabled by default pending broader tests.
+     * Status, control queues, clocks, options and native buffer ownership stay
+     * intact. Nonmatching modes retain the existing selectors and masks. */
+    .section ._psxcore_interlace_scanout,"ax",@progbits
+    .balign 16
+    .macro NP_INTERLACE_TUPLE reg,fallback
+    lui \reg,0x7000
+    lw \reg,0x32cc(\reg)
+    xori \reg,\reg,2
+    bnez \reg,\fallback
+    nop
+    lui \reg,0x7000
+    lw \reg,0x3304(\reg)
+    xori \reg,\reg,1
+    bnez \reg,\fallback
+    nop
+    lui \reg,0x7000
+    lw \reg,0x3308(\reg)
+    bnez \reg,\fallback
+    nop
+    lui \reg,0x7000
+    lw \reg,0x3300(\reg)
+    xori \reg,\reg,2
+    bnez \reg,\fallback
+    nop
+    lui \reg,0x7000
+    lw \reg,0x32c0(\reg)
+    xori \reg,\reg,480
+    bnez \reg,\fallback
+    nop
+    .endm
+    .globl np_interlace_buffered
+np_interlace_buffered:
+    addiu $sp,$sp,-16
+    sq $a0,0($sp)
+    NP_INTERLACE_TUPLE $a0,interlace_buffered_exit
+    ori $v0,$v0,2
+interlace_buffered_exit:
+    lq $a0,0($sp)
+    addiu $sp,$sp,16
+    j rgb_buffered_exit
+    nop
+    .globl np_interlace_dispatch
+np_interlace_dispatch:
+    NP_INTERLACE_TUPLE $a0,interlace_dispatch_native
+    j rgb_dispatch_select
+    nop
+interlace_dispatch_native:
+    lw $a0,0x264c($s0)
+    beqz $a0,rgb_dispatch_exit
+    nop
+    j rgb_dispatch_buffer_continue
+    nop
+    .macro NP_INTERLACE_MASK name,base,dest,back
+    .globl \name
+\name:
+    lw $v0,0x2268(\base)
+    ori \dest,$v0,2
+    addiu $sp,$sp,-16
+    sq $8,0($sp)
+    NP_INTERLACE_TUPLE $8,9f
+    /* Change only the GS drawing mask once native buffered output is active.
+     * Other displaced outputs retain their native field value. */
+    lui $8,0x7000
+    lw $8,0x373c($8)
+    xori $8,$8,1
+    bnez $8,9f
+    nop
+    move \dest,$zero
+9:
+    lq $8,0($sp)
+    addiu $sp,$sp,16
+    j \back
+    nop
+    .endm
+    NP_INTERLACE_MASK np_interlace_fill,$v1,$v0,0x21ce90
+    NP_INTERLACE_MASK np_interlace_flat,$v1,$a0,0x21daf8
+    NP_INTERLACE_MASK np_interlace_textured,$a2,$v1,0x21e3e0
+    NP_INTERLACE_MASK np_interlace_rectangle,$v1,$v0,0x21fa24
+    NP_INTERLACE_MASK np_interlace_line,$v1,$s4,0x22069c
+    .globl np_interlace_end
+np_interlace_end:
+#endif
 #endif

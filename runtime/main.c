@@ -39,6 +39,28 @@ extern void np_video_trace_reset(void),np_video_trace_crt(void);
 extern void np_video_interlace_applied(void);
 extern void np_rgb24_buffered(void),np_rgb24_dispatch(void),np_rgb24_update(void);
 static NpPatchSet patch_set;
+#if NP_INTERLACE_BUFFERED_PRESENT
+#if !NP_RGB24_SCANOUT_ADAPTER
+#error NP_INTERLACE_BUFFERED_PRESENT requires NP_RGB24_SCANOUT_ADAPTER
+#endif
+extern void np_interlace_fill(void),np_interlace_flat(void),np_interlace_textured(void);
+extern void np_interlace_rectangle(void),np_interlace_line(void),np_interlace_end(void);
+static int install_interlace_presentation_adapter(void) {
+    const uint32_t sites[5]={0x21ce88,0x21daf0,0x21e3d8,0x21fa1c,0x220694};
+    const uint32_t expected[5][2]={{0x8c622268,0x34420002},{0x8c622268,0x34440002},
+        {0x8cc22268,0x34430002},{0x8c622268,0x34420002},{0x8c622268,0x34540002}};
+    const uintptr_t hooks[5]={(uintptr_t)np_interlace_fill,(uintptr_t)np_interlace_flat,
+        (uintptr_t)np_interlace_textured,(uintptr_t)np_interlace_rectangle,(uintptr_t)np_interlace_line};
+    const uintptr_t end=(uintptr_t)np_interlace_end;
+    if(end<=0xf7900 || end>0xf8000)return -1;
+    for(unsigned i=0;i<5;++i) {
+        if(hooks[i]<0xf7900 || hooks[i]>=end || (hooks[i]&3))return -1;
+        const uint32_t replacement[2]={0x08000000u|((uint32_t)hooks[i]>>2),0};
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,8))return -1;
+    }
+    return 0;
+}
+#endif
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
 extern void np_gte_orgb(void),np_gte_orgb_end(void);
 extern void np_gte_irgb(void),np_gte_irgb_end(void);
@@ -613,6 +635,12 @@ int main(void) {
             trace("PSXCORE rejected=rgb24-scanout-patch-plan\n");goto rejected;
         }
         trace("PSXCORE rgb24-scanout-adapter=1 scanout=buffered transport=native scope=runtime activation=automatic\n");
+#if NP_INTERLACE_BUFFERED_PRESENT
+        if(install_interlace_presentation_adapter()) {
+            trace("PSXCORE rejected=interlace-presentation-plan\n");goto rejected;
+        }
+        trace("PSXCORE interlace-presentation=buffered-both-fields tuple=ntsc-ps15-480 experimental=yes scope=runtime\n");
+#endif
     }
 #endif
     if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
