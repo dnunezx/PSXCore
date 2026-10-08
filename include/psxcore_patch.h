@@ -3,7 +3,8 @@
 #define PSXCORE_PATCH_H
 #include "psxcore_elf.h"
 #define NP_PATCH_BYTES 32u
-#define NP_PATCH_LIMIT 64u
+/* Includes the file-storage plan and optional guest diagnostics. */
+#define NP_PATCH_LIMIT 96u
 typedef struct {
     uint32_t address, length;
     unsigned char expected[NP_PATCH_BYTES], replacement[NP_PATCH_BYTES];

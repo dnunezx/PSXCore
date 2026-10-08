@@ -1,0 +1,7 @@
+#include <irx.h>
+#include <iomanX.h>
+#include <bdm.h>
+#include <loadcore.h>
+#include <sysclib.h>
+#include <stdio.h>
+#include <thsemap.h>
