@@ -64,6 +64,45 @@ static int install_interlace_presentation_adapter(void) {
 }
 #endif
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#if NP_PCM_BUFFER_RATE
+extern void np_pcm_buffer_rate(void),np_pcm_buffer_rate_end(void);
+static int install_pcm_buffer_rate(void) {
+    const uintptr_t hook=(uintptr_t)np_pcm_buffer_rate;
+    const uintptr_t end=(uintptr_t)np_pcm_buffer_rate_end;
+    if(hook<0xf3cd0 || end<=hook || end>0xf4cd0 || (hook&3))return -1;
+    const uint32_t expected[4]={0x8cb20008,0x2e4200fc,0x14600020,0x0082900a};
+    const uint32_t replacement[4]={0x08000000u|((uint32_t)hook>>2),0,expected[2],expected[3]};
+    return np_patch_add(&patch_set,0x213f3c,expected,replacement,sizeof(expected))?-1:0;
+}
+#endif
+#if NP_MDEC_BLOCK_FASTPATH
+extern void np_mdec_fast_begin(void),np_mdec_fast_end(void);
+extern void np_mdec_dc(void),np_mdec_flat(void),np_mdec_rle_dc(void),np_mdec_clear(void);
+static int install_mdec_block_fastpaths(void) {
+    /* The full POPS hash/layout is checked before this transactional plan.
+     * Guard the displaced prologues and clear call. Keep helpers in the unused
+     * trace-ring reservation. Native DMA completion and decoder state remain
+     * untouched; each helper falls back for inputs it cannot simplify. */
+    const uintptr_t begin=(uintptr_t)np_mdec_fast_begin;
+    const uintptr_t end=(uintptr_t)np_mdec_fast_end;
+    const uintptr_t hooks[4]={(uintptr_t)np_mdec_dc,(uintptr_t)np_mdec_flat,
+        (uintptr_t)np_mdec_rle_dc,(uintptr_t)np_mdec_clear};
+    const uint32_t sites[4]={0x20d3b8,0x20d9f8,0x20d2a8,0x20d2cc};
+    const uint32_t expected[4][4]={
+        {0x27bdfeb0,0xffb00100,0x03a0582d,0xffb10108},
+        {0x27bdffd0,0x3c02005a,0xffb00000,0x0080802d},
+        {0x27bdffe0,0xffb20010,0x00a0902d,0xffb10008},
+        {0x0c0827bc,0x00c0802d,0x0220102d,0x26310002}};
+    if(begin<0xf3cd0 || end<=begin || end>0xf4cd0)return -1;
+    for(unsigned i=0;i<4;++i) {
+        if(hooks[i]<begin || hooks[i]>=end || (hooks[i]&3))return -1;
+        const uint32_t replacement[4]={(i==3?0x0c000000u:0x08000000u)|((uint32_t)hooks[i]>>2),
+            i==3?expected[i][1]:0,expected[i][2],expected[i][3]};
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,sizeof(replacement)))return -1;
+    }
+    return 0;
+}
+#endif
 extern void np_gte_orgb(void),np_gte_orgb_end(void);
 extern void np_gte_irgb(void),np_gte_irgb_end(void);
 static int install_gte_color_adapter(void) {
@@ -771,6 +810,22 @@ int main(int argc,char **argv) {
         error=np_compat_add_patches(request.runtime,request.environment,resolved.fixes,&patch_set);
         if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     }
+#if NP_MDEC_BLOCK_FASTPATH
+    if(native) {
+        if(install_mdec_block_fastpaths()) {
+            trace("PSXCORE rejected=mdec-block-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE mdec-block-fastpath=1 transform=exact scheduling=native\n");
+    }
+#endif
+#if NP_PCM_BUFFER_RATE
+    if(native) {
+        if(install_pcm_buffer_rate()) {
+            trace("PSXCORE rejected=pcm-buffer-rate-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE pcm-buffer-rate=1 output-only=1 minimum-step=3387 nominal-step=3763\n");
+    }
+#endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     trace("PSXCORE patches=verified count=%u capacity=%u\n",patch_set.count,NP_PATCH_LIMIT);
