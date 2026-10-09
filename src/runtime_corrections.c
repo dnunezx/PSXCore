@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 4) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 5) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -63,5 +63,19 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x50,0x03,0x04,0x26, 0x00,0x00,0x00,0x00,
         0x00,0x00,0x00,0x00, 0xaa,0x01,0x33,0xa6
     };
-    return np_patch_add(set, 0x00213c0c, spu_expected, spu_corrected, sizeof(spu_expected));
+    error = np_patch_add(set, 0x00213c0c, spu_expected, spu_corrected, sizeof(spu_expected));
+    if (error) return error;
+    /* GTE data register 23 (RES1) is ordinary 32-bit read/write storage.
+     * POPS classifies its writes as discarded, so MTC2/LWC2 omit the store
+     * while MFC2/SWC2 read stale data. Select the native word-store path;
+     * retain the surrounding register classes and special FIFO handlers. */
+    static const unsigned char gte_expected[32] = {
+        2,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,
+        0,0,0,0, 3,0,0,0, 3,0,0,0, 0,0,0,0
+    };
+    static const unsigned char gte_corrected[32] = {
+        2,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,
+        0,0,0,0, 0,0,0,0, 3,0,0,0, 0,0,0,0
+    };
+    return np_patch_add(set, 0x0024a938, gte_expected, gte_corrected, sizeof(gte_expected));
 }
