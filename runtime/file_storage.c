@@ -45,7 +45,11 @@ int np_file_storage_init(int reset) {
         if(i==300)return -1;
         SifInitRpc(0);
     }
-    if(reset && sbv_patch_enable_lmb()<=0)return -1;
+    if(reset) {
+        int patched=sbv_patch_enable_lmb();
+        printf("PSXCORE file-storage=lmb-patch result=%d\n",patched);
+        if(patched<0)return -1;
+    }
     LOAD(iomanX);LOAD(fileXio);LOAD(ps2dev9);LOAD(bdm);LOAD(bdmfs_fatfs);LOAD(ata_bd);
     if(fileXioInit()<0)return -1;
     for(unsigned i=0;i<50;++i) {

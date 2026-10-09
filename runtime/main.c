@@ -865,7 +865,7 @@ int main(int argc,char **argv) {
         trace("PSXCORE iop=image-synchronized\n");
         int patched=sbv_patch_enable_lmb();
         trace("PSXCORE iop=lmb-patch result=%d\n",patched);
-        if(patched<=0)goto failed;
+        if(patched<0)goto failed;
     }
     trace("PSXCORE iop=service-probe-begin\n");
     int load=SifLoadFileInit(),heap=SifInitIopHeap();
