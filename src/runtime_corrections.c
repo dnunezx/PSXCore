@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 3) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 4) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -43,5 +43,25 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x01,0x00,0x02,0x24, 0x08,0x00,0x42,0x52,
         0x00,0xc2,0x70,0x26
     };
-    return np_patch_add(set, 0x0020eac8, cdda_expected, cdda_corrected, sizeof(cdda_expected));
+    error = np_patch_add(set, 0x0020eac8, cdda_expected, cdda_corrected, sizeof(cdda_expected));
+    if (error) return error;
+    /* Enabling the SPU is not a power-on reset. POPS clears its entire SPU
+     * state here, losing voice rates and other registers programmed while
+     * disabled. Silent voices then never reach their end flags, blocking
+     * games that allocate voices only after their envelopes become idle.
+     * Keep the native cold-reset initializer, enable predicates, control
+     * shadow and transfer/IRQ processing; omit only the enable-time reset. */
+    static const unsigned char spu_expected[32] = {
+        0x07,0x00,0x40,0x14, 0xaa,0x01,0x33,0x96,
+        0x00,0x80,0x62,0x32, 0x05,0x00,0x40,0x10,
+        0x50,0x03,0x04,0x26, 0x80,0x4f,0x08,0x0c,
+        0x00,0x00,0x00,0x00, 0xaa,0x01,0x33,0xa6
+    };
+    static const unsigned char spu_corrected[32] = {
+        0x07,0x00,0x40,0x14, 0xaa,0x01,0x33,0x96,
+        0x00,0x80,0x62,0x32, 0x05,0x00,0x40,0x10,
+        0x50,0x03,0x04,0x26, 0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00, 0xaa,0x01,0x33,0xa6
+    };
+    return np_patch_add(set, 0x00213c0c, spu_expected, spu_corrected, sizeof(spu_expected));
 }

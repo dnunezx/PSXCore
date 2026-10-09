@@ -152,10 +152,22 @@ np_memory_group_plan_failed:
     lui $a2,0x1f80
     subu $a2,$v1,$a2
     sltiu $a2,$a2,0x400
+    .if \store
     bnez $a2,\name\()_ram
     nop
     b np_memory_unknown_address
     nop
+    .else
+    /* The pinned emitter charges four RAM read wait states even when a
+     * calculated address lands in scratchpad. Its constant-scratch path
+     * already refunds four. Apply that same refund only to dynamic reads;
+     * preserve instruction charges, stores and all other mapped regions.
+     * Reuse the original four words so resident entry addresses stay fixed. */
+    beqz $a2,np_memory_unknown_address
+    nop
+    b \name\()_ram
+    addiu $k1,$k1,4
+    .endif
 \name\()_ram:
     .if \store
     \instruction $a1,0($v0)
