@@ -5,3 +5,4 @@
 #include <sysclib.h>
 #include <stdio.h>
 #include <thsemap.h>
+#include "native.h"

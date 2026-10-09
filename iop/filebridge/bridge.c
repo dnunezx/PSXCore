@@ -6,6 +6,7 @@
 #include "irx_imports.h"
 #endif
 #include "psxcore_file.h"
+#include "native.h"
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
@@ -109,9 +110,24 @@ static s64 bridge_seek64(iop_file_t *f,s64 offset,int whence) {
 }
 static int bridge_seek(iop_file_t *f,int offset,int whence){return (int)bridge_seek64(f,offset,whence);}
 static int bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
-    char target[NP_FILE_PATH_BYTES+8];int e=path(f->unit,name,target);
+    if(!st)return -EINVAL;
+    char target[NP_FILE_PATH_BYTES+8];
+    int directory=f->unit==1 && name && !strcmp(name,"/ps1emu");
+    int e;
+    if(directory) {
+        /* Route through a validated card name, then stat its actual parent.
+         * The bootstrap has already verified ownership and both cards there.
+         * No other directory alias or mkdir operation is admitted. */
+        e=path(1,"/ps1emu/card0",target);
+        if(!e)target[strlen(target)-sizeof("/card0")+1]=0;
+    } else e=path(f->unit,name,target);
     if(e)return e;
-    e=enter();if(e)return e;return leave(iomanX_getstat(target,st));
+    e=enter();if(e)return e;
+    iox_stat_t result;memset(&result,0,sizeof(result));
+    e=iomanX_getstat(target,&result);
+    if(e>=0 && directory && !FIO_S_ISDIR(result.mode))e=-ENOTDIR;
+    if(e>=0)memcpy(st,&result,sizeof(result));
+    return leave(e);
 }
 static int bridge_mount(iop_file_t *f,const char *name,const char *device,int flags,void *args,int length) {
     (void)flags;(void)args;(void)length;
@@ -186,7 +202,10 @@ int _start(int argc,char **argv) {
     iop_sema_t sema={0};sema.initial=1;sema.max=1;lock=CreateSema(&sema);
     if(lock<0)return MODULE_NO_RESIDENT_END;
     if(iomanX_AddDrv(&device)!=0){DeleteSema(lock);lock=-1;return MODULE_NO_RESIDENT_END;}
+    if(np_file_native_register(&device)!=0) {
+        iomanX_DelDrv("pfs");DeleteSema(lock);lock=-1;return MODULE_NO_RESIDENT_END;
+    }
     bdm_RegisterCallback(storage_event);
-    printf("PSXCORE file-bridge=ready root=%s disc=%s saves=%s flush-errors=limited\n",root,disc,key);
+    printf("PSXCORE file-bridge=ready root=%s disc=%s saves=%s native-ioman=1.4 flush-errors=limited\n",root,disc,key);
     return MODULE_RESIDENT_END;
 }
