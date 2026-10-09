@@ -28,6 +28,7 @@ all: library runtime
 library: build/libpsxcore.a
 inventory: $(EE_BIN)
 runtime: | build
+	$(MAKE) -C iop/nativegate
 	$(MAKE) -C iop/filebridge
 	mkdir -p build/runtime
 	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/file_storage.c runtime/file_storage.h runtime/dmacycles.S runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S runtime/returndelay.S runtime/gtecolor.S runtime/rgb24.S runtime/gp0.S runtime/loopcycles.S runtime/audio.S runtime/spucapture.S runtime/spureverb.S runtime/mdec.S runtime/pcmflow.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/file.c src/file_patch.c src/vcd.c src/sha1.c src/patch.c src/runtime_corrections.c build/runtime/

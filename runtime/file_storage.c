@@ -26,7 +26,7 @@
 
 #define MODULE(name) extern unsigned char name##_irx[];extern unsigned int size_##name##_irx
 MODULE(iomanX);MODULE(fileXio);MODULE(ps2dev9);MODULE(bdm);MODULE(bdmfs_fatfs);
-MODULE(ata_bd);MODULE(psxcore_filebridge);
+MODULE(ata_bd);MODULE(psxcore_nativegate);MODULE(psxcore_filebridge);
 static char mounted[8];
 int np_file_probe_only;
 static int load(const char *name,const unsigned char *bytes,unsigned size,const char *args,unsigned length) {
@@ -36,6 +36,12 @@ static int load(const char *name,const unsigned char *bytes,unsigned size,const 
     return id<0 || result!=0?-1:0;
 }
 #define LOAD(name) do { if(load(#name,name##_irx,size_##name##_irx,NULL,0))return -1; } while(0)
+int np_file_storage_init_pops(void) {
+    /* Called only after the final, verified POPS IOP reset. The initial
+     * storage environment is discarded and must not supply this pointer. */
+    LOAD(psxcore_nativegate);
+    return np_file_storage_init(0);
+}
 int np_file_storage_init(int reset) {
     if(reset) {
         unsigned i;

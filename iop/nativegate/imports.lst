@@ -1,0 +1,18 @@
+/* Eight-byte library names have no terminator. Avoid a truncated string
+ * initializer warning in recent SDK compilers. */
+static struct irx_import_table _imp_loadcore
+    __attribute__((section(".text\n\t#"),unused))={
+    .magic=IMPORT_MAGIC,.version=IRX_VER(1,1),
+    .name={'l','o','a','d','c','o','r','e'},
+};
+I_GetLoadcoreInternalData
+I_QueryLibraryEntryTable
+I_RegisterLibraryEntries
+loadcore_IMPORTS_end
+sysclib_IMPORTS_start
+I_memcmp
+I_strcmp
+sysclib_IMPORTS_end
+stdio_IMPORTS_start
+I_printf
+stdio_IMPORTS_end

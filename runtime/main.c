@@ -874,7 +874,7 @@ int main(int argc,char **argv) {
     if(load<0 || heap<0 || !allocation)goto failed;
     SifFreeIopHeap(allocation);
     if(file_launch) {
-        if(np_file_storage_init(0)){trace("PSXCORE rejected=file-storage-post-reset\n");goto failed;}
+        if(np_file_storage_init_pops()){trace("PSXCORE rejected=file-storage-post-reset\n");goto failed;}
         error=np_file_reopen(&file_request,0);
         if(!error)error=np_file_bridge_start(&file_request);
         if(error){trace("PSXCORE rejected=%s\n",error);goto failed;}

@@ -5,8 +5,8 @@
 #define PSXCORE_FILE_NATIVE_H
 #include <stdint.h>
 #include <stddef.h>
+#include "psxcore_nativegate.h"
 
-typedef struct NpNativeDevice NpNativeDevice;
 typedef struct {
     int mode,unit;
     NpNativeDevice *device;
@@ -58,6 +58,5 @@ _Static_assert(offsetof(NpNativeOps,mount)==80,"native mount slot");
 _Static_assert(offsetof(NpNativeOps,lseek64)==88,"native seek64 slot");
 _Static_assert(sizeof(NpNativeOps)==108,"native operations ABI");
 #endif
-int np_file_native_adddrv(NpNativeDevice *device);
 int np_file_native_register(iop_device_t *bridge);
 #endif

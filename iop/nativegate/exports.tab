@@ -1,0 +1,7 @@
+DECLARE_EXPORT_TABLE(psxnat, 1, 1)
+DECLARE_EXPORT(_start)
+DECLARE_EXPORT(_retonly)
+DECLARE_EXPORT(_retonly)
+DECLARE_EXPORT(_retonly)
+DECLARE_EXPORT(np_file_native_adddrv)
+END_EXPORT_TABLE

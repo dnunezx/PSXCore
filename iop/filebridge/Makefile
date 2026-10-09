@@ -7,7 +7,7 @@ all: $(IOP_BIN)
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.iopglobal
 $(IOP_OBJS_DIR)bridge.o $(IOP_OBJS_DIR)file.o: ../../include/psxcore_file.h ../../include/psxcore_launch.h ../../include/psxcore_vcd.h
-$(IOP_OBJS_DIR)bridge.o $(IOP_OBJS_DIR)native.o $(IOP_OBJS_DIR)imports.o: native.h irx_imports.h
+$(IOP_OBJS_DIR)bridge.o $(IOP_OBJS_DIR)native.o $(IOP_OBJS_DIR)imports.o: native.h irx_imports.h ../../include/psxcore_nativegate.h
 $(IOP_OBJS_DIR)file.o: ../../src/file.c
 	$(IOP_CC) $(IOP_CFLAGS) $(IOP_INCS) -c $< -o $@
 $(IOP_OBJS_DIR)vcd.o: ../../src/vcd.c

@@ -3,6 +3,7 @@
 #define PSXCORE_FILE_STORAGE_H
 #include "psxcore_file.h"
 int np_file_storage_init(int reset);
+int np_file_storage_init_pops(void);
 const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *out);
 const char *np_file_reopen(const NpFileLaunchRequest *request,int provision);
 const char *np_file_bridge_start(const NpFileLaunchRequest *request);
