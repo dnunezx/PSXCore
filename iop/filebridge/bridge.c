@@ -7,7 +7,9 @@
 #endif
 #include "psxcore_file.h"
 #include "native.h"
+#include "worker.h"
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <string.h>
 IRX_ID("psxcore_file",1,0);
@@ -69,47 +71,60 @@ static int flush(void) {
 static int init(iop_device_t *d){(void)d;return 0;}
 static int deny(void){return -EACCES;}
 static int deny64(void){return -EACCES;}
-static int bridge_open(iop_file_t *f,const char *name,int flags,int mode) {
+/* Track backing write capability per descriptor, independently of requested
+ * native mode: POPS initializes existing canonical cards with O_RDWR but only
+ * reads them. The backing handle remains read-only; saves use .bak instead. */
+static int backing_fd(const iop_file_t *f){return (int)((uintptr_t)f->privdata>>1)-1;}
+static int writable_handle(const iop_file_t *f){return ((uintptr_t)f->privdata&1)!=0;}
+static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode) {
     char target[NP_FILE_PATH_BYTES+8];int e=path(f->unit,name,target);
     if(e)return e;
     int writing=(flags&FIO_O_RDWR)!=FIO_O_RDONLY;
-    if(writing) {
+    int canonical=f->unit==1 && (!strcmp(name,"/ps1emu/card0") || !strcmp(name,"/ps1emu/card1"));
+    if(canonical && flags==FIO_O_RDWR) {
+        writing=0;flags=FIO_O_RDONLY;
+    } else if(writing) {
         if(f->unit!=1 || (strcmp(name,"/ps1emu/card0.bak") && strcmp(name,"/ps1emu/card1.bak")) ||
            flags!=(FIO_O_WRONLY|FIO_O_CREAT|FIO_O_TRUNC))return -EROFS;
     } else if(flags!=FIO_O_RDONLY)return -EROFS;
     e=enter();if(e)return e;
     if(writing && writers)return leave(-EBUSY);
     int fd=iomanX_open(target,flags,mode);
-    if(fd>=0){f->privdata=(void *)(uintptr_t)(fd+1);if(writing)++writers;}
+    if(fd>=0) {
+        if(fd>INT_MAX/2-1){iomanX_close(fd);return leave(-EOVERFLOW);}
+        f->privdata=(void *)(((uintptr_t)(fd+1)<<1)|(unsigned)writing);
+        if(writing)++writers;
+    }
     return leave(fd<0?fd:0);
 }
-static int bridge_close(iop_file_t *f) {
+static int execute_bridge_close(iop_file_t *f) {
     /* Close even if removed, so the underlying filesystem releases its handle. */
     if(lock<0 || WaitSema(lock)<0)return -EIO;
-    int result=iomanX_close((int)(uintptr_t)f->privdata-1);
+    int writing=writable_handle(f);
+    int result=iomanX_close(backing_fd(f));
     f->privdata=NULL;
-    if((f->mode&FIO_O_RDWR)!=FIO_O_RDONLY && writers)--writers;
+    if(writing && writers)--writers;
     if(!connected() && result>=0)result=-ENODEV;
     return leave(result);
 }
-static int bridge_read(iop_file_t *f,void *p,int n) {
+static int execute_bridge_read(iop_file_t *f,void *p,int n) {
     if(n<0)return -EINVAL;
     int e=enter();if(e)return e;
-    return leave(iomanX_read((int)(uintptr_t)f->privdata-1,p,n));
+    return leave(iomanX_read(backing_fd(f),p,n));
 }
-static int bridge_write(iop_file_t *f,void *p,int n) {
-    if(f->unit!=1 || (f->mode&FIO_O_RDWR)==FIO_O_RDONLY || n<0)return -EROFS;
+static int execute_bridge_write(iop_file_t *f,void *p,int n) {
+    if(f->unit!=1 || !writable_handle(f) || n<0)return -EROFS;
     int e=enter();if(e)return e;
-    return leave(iomanX_write((int)(uintptr_t)f->privdata-1,p,n));
+    return leave(iomanX_write(backing_fd(f),p,n));
 }
-static s64 bridge_seek64(iop_file_t *f,s64 offset,int whence) {
+static s64 execute_bridge_seek64(iop_file_t *f,s64 offset,int whence) {
     if(whence<0 || whence>2)return -EINVAL;
     int e=enter();if(e)return e;
-    s64 result=iomanX_lseek64((int)(uintptr_t)f->privdata-1,offset,whence);
+    s64 result=iomanX_lseek64(backing_fd(f),offset,whence);
     SignalSema(lock);return result;
 }
-static int bridge_seek(iop_file_t *f,int offset,int whence){return (int)bridge_seek64(f,offset,whence);}
-static int bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
+static int execute_bridge_seek(iop_file_t *f,int offset,int whence){return (int)execute_bridge_seek64(f,offset,whence);}
+static int execute_bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
     if(!st)return -EINVAL;
     char target[NP_FILE_PATH_BYTES+8];
     int directory=f->unit==1 && name && !strcmp(name,"/ps1emu");
@@ -129,17 +144,17 @@ static int bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
     if(e>=0)memcpy(st,&result,sizeof(result));
     return leave(e);
 }
-static int bridge_mount(iop_file_t *f,const char *name,const char *device,int flags,void *args,int length) {
+static int execute_bridge_mount(iop_file_t *f,const char *name,const char *device,int flags,void *args,int length) {
     (void)flags;(void)args;(void)length;
     if(!name || *name || !device || f->unit<0 || f->unit>1 ||
        strcmp(device,f->unit?"hdd0:PP.PSXC.FILE":"hdd0:PP.FILE"))return -EINVAL;
     return connected()?0:-ENODEV;
 }
-static int bridge_sync(iop_file_t *f,const char *name,int flags) {
+static int execute_bridge_sync(iop_file_t *f,const char *name,int flags) {
     if(f->unit!=1 || !name || *name || flags)return -EINVAL;
     int e=enter();if(e)return e;return leave(flush());
 }
-static int bridge_rename(iop_file_t *f,const char *old,const char *newname) {
+static int execute_bridge_rename(iop_file_t *f,const char *old,const char *newname) {
     char source[NP_FILE_PATH_BYTES+8],target[NP_FILE_PATH_BYTES+8],previous[NP_FILE_PATH_BYTES+16];
     if(f->unit!=1 || !old || !newname ||
        !((!strcmp(old,"/ps1emu/card0.bak") && !strcmp(newname,"/ps1emu/card0")) ||
@@ -164,14 +179,78 @@ static int bridge_rename(iop_file_t *f,const char *old,const char *newname) {
     }
     ++replacements;return leave(0);
 }
-static int bridge_devctl(iop_file_t *f,const char *name,int cmd,void *arg,unsigned arglen,void *buffer,unsigned size) {
+static int execute_bridge_devctl(iop_file_t *f,const char *name,int cmd,void *arg,unsigned arglen,void *buffer,unsigned size) {
     (void)arg;
     if(f->unit!=1 || !name || *name || arglen)return -EINVAL;
-    if((unsigned)cmd==NP_FILE_CTL_FLUSH)return bridge_sync(f,name,0);
+    if((unsigned)cmd==NP_FILE_CTL_FLUSH)return execute_bridge_sync(f,name,0);
     if((unsigned)cmd!=NP_FILE_CTL_STATUS || !buffer || size!=16)return -EINVAL;
     int e=enter();if(e)return e;
     uint32_t status[4]={1,writers,flushes,replacements};memcpy(buffer,status,sizeof(status));
     return leave(0);
+}
+/* SDK IOMANX also redirects late ioman imports, including IOPCD's. Queue
+ * both published device ABIs; reaching the SDK registry must not consume a
+ * native caller's small stack in path routing or backing filesystem work. */
+int64_t np_file_sdk_execute(const NpFileWork *r) {
+    iop_file_t *f=r->file;
+    switch((unsigned)r->operation&~NP_FILE_SDK) {
+    case NP_FILE_OPEN:return execute_bridge_open(f,r->name,r->flags,r->mode);
+    case NP_FILE_CLOSE:return execute_bridge_close(f);
+    case NP_FILE_READ:return execute_bridge_read(f,r->buffer,r->count);
+    case NP_FILE_WRITE:return execute_bridge_write(f,r->buffer,r->count);
+    case NP_FILE_SEEK:return execute_bridge_seek(f,(int)r->offset,r->flags);
+    case NP_FILE_SEEK64:return execute_bridge_seek64(f,r->offset,r->flags);
+    case NP_FILE_STAT:return execute_bridge_stat(f,r->name,r->buffer);
+    case NP_FILE_MOUNT:return execute_bridge_mount(f,r->name,r->other,r->flags,r->arg,r->count);
+    case NP_FILE_SYNC:return execute_bridge_sync(f,r->name,r->flags);
+    case NP_FILE_RENAME:return execute_bridge_rename(f,r->name,r->other);
+    case NP_FILE_DEVCTL:return execute_bridge_devctl(f,r->name,r->flags,r->arg,r->arg_size,r->buffer,r->buffer_size);
+    default:return -EINVAL;
+    }
+}
+static int bridge_open(iop_file_t *f,const char *name,int flags,int mode) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_OPEN,.file=f,.name=name,.flags=flags,.mode=mode};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_close(iop_file_t *f) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_CLOSE,.file=f};return (int)np_file_worker_call(&r);
+}
+static int bridge_read(iop_file_t *f,void *p,int n) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_READ,.file=f,.buffer=p,.count=n};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_write(iop_file_t *f,void *p,int n) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_WRITE,.file=f,.buffer=p,.count=n};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_seek(iop_file_t *f,int offset,int whence) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_SEEK,.file=f,.offset=offset,.flags=whence};
+    return (int)np_file_worker_call(&r);
+}
+static s64 bridge_seek64(iop_file_t *f,s64 offset,int whence) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_SEEK64,.file=f,.offset=offset,.flags=whence};
+    return np_file_worker_call(&r);
+}
+static int bridge_stat(iop_file_t *f,const char *name,iox_stat_t *out) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_STAT,.file=f,.name=name,.buffer=out};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_mount(iop_file_t *f,const char *name,const char *dev,int flags,void *args,int n) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_MOUNT,.file=f,.name=name,.other=dev,.flags=flags,.arg=args,.count=n};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_sync(iop_file_t *f,const char *name,int flags) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_SYNC,.file=f,.name=name,.flags=flags};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_rename(iop_file_t *f,const char *old,const char *newname) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_RENAME,.file=f,.name=old,.other=newname};
+    return (int)np_file_worker_call(&r);
+}
+static int bridge_devctl(iop_file_t *f,const char *name,int cmd,void *arg,unsigned n,void *buf,unsigned size) {
+    NpFileWork r={.operation=NP_FILE_SDK|NP_FILE_DEVCTL,.file=f,.name=name,.flags=cmd,
+        .arg=arg,.arg_size=n,.buffer=buf,.buffer_size=size};
+    return (int)np_file_worker_call(&r);
 }
 /* Explicitly deny every operation outside the disc/card whitelist. */
 static iop_device_ops_t ops={
@@ -184,6 +263,14 @@ static iop_device_ops_t ops={
     .devctl=bridge_devctl,.symlink=(void *)deny,.readlink=(void *)deny,.ioctl2=(void *)deny64,
 };
 static iop_device_t device={"pfs",IOP_DT_FS|IOP_DT_FSEXT,1,"PSXCore file bridge",&ops};
+static int reject_start(int registered) {
+    /* Keep code resident if a live device/thread could still reference it.
+     * Return 2 so the EE loader rejects this incomplete startup. */
+    if(registered && iomanX_DelDrv("pfs")<0)return MODULE_REMOVABLE_END;
+    if(np_file_worker_stop()<0)return MODULE_REMOVABLE_END;
+    if(lock>=0){DeleteSema(lock);lock=-1;}
+    return MODULE_NO_RESIDENT_END;
+}
 int _start(int argc,char **argv) {
     /* Loader supplies module name followed by three bounded, NUL-separated args. */
     if(argc!=4 || strlen(argv[1])!=6 || strncmp(argv[1],"mass",4) ||
@@ -201,9 +288,10 @@ int _start(int argc,char **argv) {
     if(!drive || !drive->flush || drive->sectorSize!=512)return MODULE_NO_RESIDENT_END;
     iop_sema_t sema={0};sema.initial=1;sema.max=1;lock=CreateSema(&sema);
     if(lock<0)return MODULE_NO_RESIDENT_END;
-    if(iomanX_AddDrv(&device)!=0){DeleteSema(lock);lock=-1;return MODULE_NO_RESIDENT_END;}
+    if(np_file_worker_start()<0)return reject_start(0);
+    if(iomanX_AddDrv(&device)!=0)return reject_start(0);
     if(np_file_native_register(&device)!=0) {
-        iomanX_DelDrv("pfs");DeleteSema(lock);lock=-1;return MODULE_NO_RESIDENT_END;
+        return reject_start(1);
     }
     bdm_RegisterCallback(storage_event);
     printf("PSXCORE file-bridge=ready root=%s disc=%s saves=%s native-ioman=1.4 flush-errors=limited\n",root,disc,key);

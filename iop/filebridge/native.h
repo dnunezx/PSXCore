@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include "psxcore_nativegate.h"
 
-typedef struct {
+typedef struct NpNativeFile {
     int mode,unit;
     NpNativeDevice *device;
     void *privdata;

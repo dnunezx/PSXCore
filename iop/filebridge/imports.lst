@@ -33,6 +33,15 @@ I_WaitSema
 I_SignalSema
 I_DeleteSema
 thsemap_IMPORTS_end
+thbase_IMPORTS_start
+I_CreateThread
+I_StartThread
+I_TerminateThread
+I_DeleteThread
+I_GetThreadId
+I_ReferThreadStatus
+I_DelayThread
+thbase_IMPORTS_end
 /* Saved native code entry; ioman ordinal 20 is redirected by SDK IOMANX. */
 DECLARE_IMPORT_TABLE(psxnat, 1, 1)
 DECLARE_IMPORT(4, np_file_native_adddrv)
