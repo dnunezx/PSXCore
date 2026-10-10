@@ -23,3 +23,10 @@ ASSERT(. <= 0x000f8000, "runtime interlace scanout helpers overflow")
  *libkernel.a:*(.text .text.* .rodata .rodata.* .data .data.*)
 } :resident
 ASSERT(. <= 0x000ff000, "runtime transfer resident overflow")
+.code_guard 0x000ff000: {
+ np_code_guard_resident_start = .;
+ KEEP(*(._psxcore_code_guard))
+ KEEP(*(._psxcore_code_guard_data))
+ np_code_guard_resident_end = .;
+} :resident
+ASSERT(. <= 0x00100000, "runtime code guard overlaps loader")

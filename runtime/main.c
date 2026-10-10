@@ -64,6 +64,42 @@ static int install_interlace_presentation_adapter(void) {
 }
 #endif
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+extern void np_code_guard_compile(void),np_code_guard_validate(void),np_code_guard_capture(void);
+extern char np_code_guard_resident_start[],np_code_guard_resident_end[];
+static int install_code_guard(const NpElf *elf) {
+    const uintptr_t start=(uintptr_t)np_code_guard_resident_start;
+    const uintptr_t end=(uintptr_t)np_code_guard_resident_end;
+    const uintptr_t hook=(uintptr_t)np_code_guard_compile;
+    const uintptr_t validator=(uintptr_t)np_code_guard_validate;
+    const uintptr_t capture=(uintptr_t)np_code_guard_capture;
+    if(start!=0xff000 || end<=start || end>0x100000 ||
+       hook<start || hook>=end || validator<start || validator>=end ||
+       capture<start || capture>=end || (hook&3) || (validator&3) || (capture&3))return -1;
+    /* Pin the compiler call/delay, cache reservation and the decoder's raw
+     * opcode field plus inclusive 48-byte record iteration contract. */
+    const uint32_t sites[4]={0x20273c,0x202288,0x2041a4,0x202970};
+    const uint32_t expected[4][2]={{0x0c08215a,0x0100282d},
+        {0x2442e000,0x0043102b},{0xae050010,0xae11001c},
+        {0x26100030,0x02d0102b}};
+    for(unsigned j=0;j<4;++j) {
+        int found=0;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(sites[j]>=s->address && sites[j]+8<=s->address+s->filesz) {
+                const void *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(memcmp(words,expected[j],8))return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    /* Inline comparisons/snapshots add less than 12 KiB to the original
+     * maximum block. Reserve it before native allocation/compilation. */
+    const uint32_t replacement[2]={0x08000000u|((uint32_t)capture>>2),expected[2][0]};
+    return queue_word(sites[0],expected[0][0],0x0c000000u|((uint32_t)hook>>2)) ||
+           queue_word(sites[1],expected[1][0],0x2442b000) ||
+           np_patch_add(&patch_set,sites[2],expected[2],replacement,8)?-1:0;
+}
 #if NP_PCM_BUFFER_RATE
 extern void np_pcm_buffer_rate(void),np_pcm_buffer_rate_end(void);
 static int install_pcm_buffer_rate(void) {
@@ -703,6 +739,10 @@ int main(int argc,char **argv) {
     if(install_gte_color_adapter()) {
         trace("PSXCORE rejected=gte-color-patch-plan\n");goto rejected;
     }
+    if(install_code_guard(&elf)) {
+        trace("PSXCORE rejected=code-validation-patch-plan\n");goto rejected;
+    }
+    trace("PSXCORE code-validation=decoded-instructions scope=shared invalidation=native\n");
 #if NP_GPU_DMA_RASTER_SPLIT
     if(native) {
         if(install_gpu_dma_raster_split(&elf)) {

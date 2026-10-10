@@ -1,7 +1,7 @@
 EE_BIN = psxcore-runtime-bootstrap.elf
 .DEFAULT_GOAL := all
 FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd psxcore_nativegate psxcore_filebridge
-EE_OBJS = main.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
+EE_OBJS = main.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
 EE_INCS = -I../../include
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 NP_MEMORY_ACCESS_ADAPTER ?= 1
@@ -35,6 +35,10 @@ EE_CFLAGS += -DNP_GPU_DMA_RASTER_SPLIT=$(NP_GPU_DMA_RASTER_SPLIT)
 EE_CFLAGS += -DNP_MDEC_BLOCK_FASTPATH=$(NP_MDEC_BLOCK_FASTPATH)
 EE_CFLAGS += -DNP_PCM_BUFFER_RATE=$(NP_PCM_BUFFER_RATE)
 memoryaccess.o: EE_CFLAGS += -G0 -fno-jump-tables
+codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+codeguard.o: codeguard.c codeguard.h
+codeguard_asm.o: codeguard.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S pcmflow.S dmacycles.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_LIBS = -lfileXio -liopreboot -lpatches -ldebug
