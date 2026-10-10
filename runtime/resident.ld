@@ -21,6 +21,7 @@ ASSERT(. <= 0x000f8000, "runtime interlace scanout helpers overflow")
 .resident 0x000f8000: {
  KEEP(*(._psxcore_transfer))
  *libkernel.a:*(.text .text.* .rodata .rodata.* .data .data.*)
+ KEEP(*(._psxcore_igr_observe))
 } :resident
 ASSERT(. <= 0x000ff000, "runtime transfer resident overflow")
 .code_guard 0x000ff000: {

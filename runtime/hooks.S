@@ -165,10 +165,26 @@ np_native_stop:
     addiu $sp,$sp,-96
     sw $a2,32($sp)
     sq $ra,48($sp)
+#if NP_IGR_OBSERVE
+    .if \stage == 9
+    sq $t0,0($sp)
+    sq $t1,16($sp)
+    jal np_igr_wait_enter
+    nop
+    lq $t0,0($sp)
+    lq $t1,16($sp)
+    .endif
+#endif
     jal \target
     nop
     sq $v0,64($sp)
     sq $v1,80($sp)
+#if NP_IGR_OBSERVE
+    .if \stage == 9
+    jal np_igr_wait_exit
+    nop
+    .endif
+#endif
     la $t1,np_native_request_enabled
     lw $t1,0($t1)
     beqz $t1,1f

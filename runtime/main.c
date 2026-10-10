@@ -7,6 +7,18 @@
 #include "file_storage.h"
 #include "config.h"
 #include "saveguards.h"
+#ifndef NP_IGR_OBSERVE
+#define NP_IGR_OBSERVE 0
+#endif
+#if NP_IGR_OBSERVE != 0 && NP_IGR_OBSERVE != 1
+#error "NP_IGR_OBSERVE must be 0 or 1"
+#endif
+#if NP_IGR_OBSERVE
+#include "igrobserve.h"
+extern void np_igr_pad_copy_observe(void),np_igr_alarm_observe(void);
+extern char np_igr_observe_begin[],np_igr_observe_end[];
+extern NpIgrObservation np_igr_observation;
+#endif
 #include <kernel.h>
 #include <sifrpc.h>
 #include <iopcontrol.h>
@@ -876,6 +888,17 @@ int main(int argc,char **argv) {
             trace("PSXCORE rejected=pcm-buffer-rate-patch-plan\n");goto rejected;
         }
         trace("PSXCORE pcm-buffer-rate=1 output-only=1 minimum-step=3387 nominal-step=3763\n");
+    }
+#endif
+#if NP_IGR_OBSERVE
+    /* Plan last so no later adapter can alter checked observation context. */
+    if(native) {
+        const uintptr_t targets[2]={(uintptr_t)np_igr_pad_copy_observe,(uintptr_t)np_igr_alarm_observe};
+        error=np_runtime_igr_observe_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            (uintptr_t)np_igr_observe_begin,(uintptr_t)np_igr_observe_end,targets,&patch_set);
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        trace("PSXCORE igr-observe=1 state=%08x bytes=%u input=unchanged saves=native return=disabled\n",
+            (unsigned)(uintptr_t)&np_igr_observation,(unsigned)sizeof(np_igr_observation));
     }
 #endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
