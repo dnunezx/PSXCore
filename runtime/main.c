@@ -654,7 +654,7 @@ int main(int argc,char **argv) {
     SifInitRpc(0);init_scr();
     scr_printf("PSXCore experimental runtime bootstrap\n");
     if((unsigned)GetMemorySize()<NP_BOOT_STACK)goto rejected;
-    NpFileLaunchRequest file_request;
+    NpFileLaunchRequestV5 file_request;
     char mode[32]={0};size_t got;
     if(file_launch) {
         const char *error=np_file_prepare(argc,argv,&file_request);
@@ -673,8 +673,8 @@ int main(int argc,char **argv) {
     NpCompatResult resolved;
     if(native) {
         if(file_launch) {
-            const char *reason=np_file_launch_check(&file_request,sizeof(file_request),&resolved);
-            if(!reason)reason=np_file_launch_native(&file_request,&request);
+            const char *reason=np_file_launch_check_v5(&file_request,sizeof(file_request),&resolved);
+            if(!reason)reason=np_file_launch_native_v4(&file_request.launch,&request);
             if(reason){trace("PSXCORE rejected=%s\n",reason);goto rejected;}
         } else {
             FILE *f=fopen("host:/psxcore-launch.bin","rb");
@@ -696,7 +696,7 @@ int main(int argc,char **argv) {
             resolved.game_name?"matched":"unmatched",
             resolved.game_name?resolved.game_name:"unidentified",
             resolved.disc_revision?resolved.disc_revision:"unmatched");
-        trace("PSXCORE saves=%s key=%s mode=%s\n",file_launch?"/POPS/SAVES":request.save_partition,file_launch?file_request.save_key:request.save_key,
+        trace("PSXCORE saves=%s key=%s mode=%s\n",file_launch?"/POPS/SAVES":request.save_partition,file_launch?file_request.launch.save_key:request.save_key,
             request.save_mode==NP_SAVE_SHARED?"shared-explicit":"isolated");
     }
     int tekken=!strcmp(mode,"hddlicensetekken\n");
@@ -731,7 +731,7 @@ int main(int argc,char **argv) {
     if(error || profile(&elf)) {
         trace("PSXCORE rejected=%s\n",error?error:"runtime-layout-profile");goto rejected;
     }
-    if(file_launch && np_file_storage_plan(file_request.runtime,&patch_set)) {
+    if(file_launch && np_file_storage_plan(file_request.launch.runtime,&patch_set)) {
         trace("PSXCORE rejected=file-storage-patch-plan\n");goto rejected;
     }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);

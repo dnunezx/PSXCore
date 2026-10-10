@@ -12,27 +12,45 @@
 #include <limits.h>
 #include <stdint.h>
 #include <string.h>
+#ifndef NP_HOST_TEST
+#include <usbhdfsd-common.h>
+#endif
 IRX_ID("psxcore_file",1,0);
-static char root[8],disc[NP_FILE_PATH_BYTES],key[33];
+static char root[8],save_root[8],disc[NP_FILE_PATH_BYTES],key[33];
+static unsigned char disc_volume[16],save_volume[16];
+static char expected_save_driver[8];static unsigned expected_save_device;
 static int lock=-1;
 static unsigned writers,flushes,replacements;
-static struct block_device *drive;
-static u64 drive_sectors;
+/* A failed save write/close cannot later become a successful replacement. */
+static int save_failed;
+typedef struct {
+    struct block_device *drive;
+    u64 sectors,offset;
+    char driver[8];unsigned device;
+} DiskBinding;
+static DiskBinding bindings[2];
 static volatile int removed;
 /* BDM's callback has no device identity. Conservatively latch every unmount;
  * reconnection requires a fresh launch and full image verification. */
 static void storage_event(int mounted){if(!mounted)removed=1;}
 
 /* Never reuse an unrelated disk after removal. Filesystem handles additionally
- * reject a disconnected/reconnected volume. ATA0 only in this contract. */
+ * reject a disconnected/reconnected volume. Bind using the selected file's
+ * metadata, never mass enumeration or the first physical drive. */
 static int connected(void) {
     if(removed)return 0;
     struct block_device *list[20]={0};
     bdm_get_bd(list,20);
-    for(unsigned i=0;i<20;++i)
-        if(list[i]==drive && drive && !strcmp(drive->name,"ata") && drive->devNr==0 &&
-           drive->parNr==0 && drive->sectorCount==drive_sectors && drive->sectorSize==512)return 1;
-    return 0;
+    for(unsigned unit=0;unit<2;++unit) {
+        DiskBinding *b=&bindings[unit];int found=0;
+        for(unsigned i=0;i<20;++i) {
+            struct block_device *d=list[i];
+            if(d && d==b->drive && d->name && !strcmp(d->name,b->driver) && d->devNr==b->device &&
+               !d->parNr && d->sectorOffset==b->offset && d->sectorCount==b->sectors && d->sectorSize==512){found=1;break;}
+        }
+        if(!found)return 0;
+    }
+    return 1;
 }
 static int enter(void) {
     if(lock<0 || WaitSema(lock)<0)return -EIO;
@@ -43,9 +61,10 @@ static int leave(int result){SignalSema(lock);return result;}
 static int path(unsigned unit,const char *name,char out[NP_FILE_PATH_BYTES+8]) {
     char relative[NP_FILE_PATH_BYTES];
     if(np_file_route(unit,name,disc,key,relative,sizeof(relative)))return -EACCES;
-    size_t r=strlen(root),n=strlen(relative);
+    const char *selected=unit==1?save_root:root;
+    size_t r=strlen(selected),n=strlen(relative);
     if(r+n>=NP_FILE_PATH_BYTES+8)return -ENAMETOOLONG;
-    memcpy(out,root,r);memcpy(out+r,relative,n+1);return 0;
+    memcpy(out,selected,r);memcpy(out+r,relative,n+1);return 0;
 }
 static int valid_card(const char *name) {
     iox_stat_t st;unsigned char h[128];
@@ -63,7 +82,8 @@ static int missing(int error){return error==-ENOENT || error==-4; /* FatFs FR_NO
 /* f_close synchronizes modified file metadata. BDM flush callbacks return void;
  * completion does not prove device error reporting or power-loss durability. */
 static int flush(void) {
-    if(writers || !connected() || !drive->flush)return -EIO;
+    struct block_device *drive=bindings[1].drive;
+    if(writers || save_failed || !connected() || !drive->flush)return -EIO;
     drive->flush(drive);
     if(!connected())return -ENODEV;
     ++flushes;return 0;
@@ -88,6 +108,7 @@ static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode
            flags!=(FIO_O_WRONLY|FIO_O_CREAT|FIO_O_TRUNC))return -EROFS;
     } else if(flags!=FIO_O_RDONLY)return -EROFS;
     e=enter();if(e)return e;
+    if(writing && save_failed)return leave(-EIO);
     if(writing && writers)return leave(-EBUSY);
     int fd=iomanX_open(target,flags,mode);
     if(fd>=0) {
@@ -104,6 +125,7 @@ static int execute_bridge_close(iop_file_t *f) {
     int result=iomanX_close(backing_fd(f));
     f->privdata=NULL;
     if(writing && writers)--writers;
+    if(writing && result<0)save_failed=1;
     if(!connected() && result>=0)result=-ENODEV;
     return leave(result);
 }
@@ -115,7 +137,11 @@ static int execute_bridge_read(iop_file_t *f,void *p,int n) {
 static int execute_bridge_write(iop_file_t *f,void *p,int n) {
     if(f->unit!=1 || !writable_handle(f) || n<0)return -EROFS;
     int e=enter();if(e)return e;
-    return leave(iomanX_write(backing_fd(f),p,n));
+    if(save_failed)return leave(-EIO);
+    int result=iomanX_write(backing_fd(f),p,n);
+    if(result!=n)save_failed=1;
+    if((n && !result) || result>n)result=-EIO;
+    return leave(result);
 }
 static s64 execute_bridge_seek64(iop_file_t *f,s64 offset,int whence) {
     if(whence<0 || whence>2)return -EINVAL;
@@ -163,6 +189,7 @@ static int execute_bridge_rename(iop_file_t *f,const char *old,const char *newna
     size_t n=strlen(target);memcpy(previous,target,n);memcpy(previous+n,".prev",6);
     int e=enter();if(e)return e;
     if(writers)return leave(-EBUSY);
+    if(save_failed)return leave(-EIO);
     e=valid_card(source);if(e)return leave(e);
     e=valid_card(target);if(e)return leave(e);
     /* FatFs cannot replace an existing destination. Retain the last complete
@@ -185,12 +212,13 @@ static int execute_bridge_devctl(iop_file_t *f,const char *name,int cmd,void *ar
     if((unsigned)cmd==NP_FILE_CTL_FLUSH)return execute_bridge_sync(f,name,0);
     if((unsigned)cmd!=NP_FILE_CTL_STATUS || !buffer || size!=16)return -EINVAL;
     int e=enter();if(e)return e;
-    uint32_t status[4]={1,writers,flushes,replacements};memcpy(buffer,status,sizeof(status));
+    uint32_t status[4]={save_failed?0u:1u,writers,flushes,replacements};memcpy(buffer,status,sizeof(status));
     return leave(0);
 }
 /* SDK IOMANX also redirects late ioman imports, including IOPCD's. Queue
  * both published device ABIs; reaching the SDK registry must not consume a
  * native caller's small stack in path routing or backing filesystem work. */
+static int bind_device(const char *expected_driver,unsigned expected_device);
 int64_t np_file_sdk_execute(const NpFileWork *r) {
     iop_file_t *f=r->file;
     switch((unsigned)r->operation&~NP_FILE_SDK) {
@@ -205,6 +233,7 @@ int64_t np_file_sdk_execute(const NpFileWork *r) {
     case NP_FILE_SYNC:return execute_bridge_sync(f,r->name,r->flags);
     case NP_FILE_RENAME:return execute_bridge_rename(f,r->name,r->other);
     case NP_FILE_DEVCTL:return execute_bridge_devctl(f,r->name,r->flags,r->arg,r->arg_size,r->buffer,r->buffer_size);
+    case NP_FILE_BIND:return bind_device(r->name,(unsigned)r->flags);
     default:return -EINVAL;
     }
 }
@@ -271,29 +300,99 @@ static int reject_start(int registered) {
     if(lock>=0){DeleteSema(lock);lock=-1;}
     return MODULE_NO_RESIDENT_END;
 }
+/* Startup filesystem work also belongs on the dedicated worker stack. */
+static int bind_path(const char *target,const char *expected_driver,unsigned expected_device,DiskBinding *out) {
+    int fd=iomanX_open(target,FIO_O_RDONLY,0);
+    if(fd<0)return fd;
+    char actual_driver[8]={0};unsigned actual_device=~0u;u64 lba=0;
+    int identity=iomanX_ioctl2(fd,USBMASS_IOCTL_GET_DRIVERNAME,NULL,0,actual_driver,sizeof(actual_driver));
+    if(identity>=0)identity=iomanX_ioctl2(fd,USBMASS_IOCTL_GET_DEVICE_NUMBER,NULL,0,&actual_device,sizeof(actual_device));
+    if(identity>=0)identity=iomanX_ioctl2(fd,USBMASS_IOCTL_GET_LBA,NULL,0,&lba,sizeof(lba));
+    int closed=iomanX_close(fd);
+    if(identity<0 || closed<0 || !memchr(actual_driver,0,sizeof(actual_driver)) ||
+       strcmp(actual_driver,expected_driver) || actual_device!=expected_device)return -ENODEV;
+    memset(out,0,sizeof(*out));
+    struct block_device *list[20]={0};bdm_get_bd(list,20);
+    for(unsigned i=0;i<20;++i)if(list[i] && list[i]->name && !strcmp(list[i]->name,actual_driver) &&
+        list[i]->devNr==actual_device && !list[i]->parNr && lba>=list[i]->sectorOffset &&
+        lba-list[i]->sectorOffset<list[i]->sectorCount) {
+        if(out->drive)return -ENODEV;
+        out->drive=list[i];out->sectors=list[i]->sectorCount;
+    }
+    struct block_device *drive=out->drive;
+    if(!drive || !drive->flush || drive->sectorSize!=512)return -ENODEV;
+    out->offset=drive->sectorOffset;memcpy(out->driver,actual_driver,sizeof(out->driver));out->device=actual_device;
+    return 0;
+}
+static int marker_matches(const char *selected,const unsigned char expected[16]) {
+    if(!np_file_volume_id_present(expected))return 0;
+    char target[64];size_t n=strlen(selected);
+    memcpy(target,selected,n);memcpy(target+n,NP_FILE_VOLUME_MARKER,sizeof(NP_FILE_VOLUME_MARKER));
+    iox_stat_t st;if(iomanX_getstat(target,&st)<0 || !FIO_S_ISREG(st.mode) || st.hisize || st.size!=sizeof(NpFileVolumeMarker))return -ENODEV;
+    int fd=iomanX_open(target,FIO_O_RDONLY,0);if(fd<0)return fd;
+    NpFileVolumeMarker marker;unsigned char actual[16],extra;
+    int nread=iomanX_read(fd,&marker,sizeof(marker));
+    int trailing=nread==sizeof(marker)?iomanX_read(fd,&extra,1):-1;
+    int closed=iomanX_close(fd);
+    if(nread!=sizeof(marker) || trailing || closed<0 || np_file_volume_marker_check(&marker,sizeof(marker),actual) || memcmp(actual,expected,16))return -ENODEV;
+    return 0;
+}
+static int bind_device(const char *expected_driver,unsigned expected_device) {
+    if(marker_matches(root,disc_volume) || marker_matches(save_root,save_volume))return -ENODEV;
+    char target[NP_FILE_PATH_BYTES+8];size_t rn=strlen(root),dn=strlen(disc);
+    memcpy(target,root,rn);memcpy(target+rn,disc,dn+1);
+    int e=bind_path(target,expected_driver,expected_device,&bindings[0]);if(e)return e;
+    if(!strcmp(root,save_root))bindings[1]=bindings[0];
+    else {
+        e=path(1,"/ps1emu/card0",target);if(e)return e;
+        size_t n=strlen(target)-5;memcpy(target+n,"owner.sha256",sizeof("owner.sha256"));
+        e=bind_path(target,expected_save_driver,expected_save_device,&bindings[1]);if(e)return e;
+    }
+    removed=0;save_failed=0;return 0;
+}
+static int root_valid(const char *selected) {
+    return strlen(selected)==6 && !strncmp(selected,"mass",4) && selected[4]>='0' && selected[4]<='9' && selected[5]==':';
+}
 int _start(int argc,char **argv) {
-    /* Loader supplies module name followed by three bounded, NUL-separated args. */
-    if(argc!=4 || strlen(argv[1])!=6 || strncmp(argv[1],"mass",4) ||
-       argv[1][4]<'0' || argv[1][4]>'9' || argv[1][5]!=':' ||
+    /* Legacy single-volume args or explicit endpoints plus volume IDs. */
+    if((argc!=4 && argc!=6 && argc!=11) || !root_valid(argv[1]) ||
        strlen(argv[2])>=sizeof(disc) || strlen(argv[3])>=sizeof(key))return MODULE_NO_RESIDENT_END;
     memcpy(root,argv[1],7);memcpy(disc,argv[2],strlen(argv[2])+1);memcpy(key,argv[3],strlen(argv[3])+1);
     char test[NP_FILE_PATH_BYTES];
     if(np_file_route(0,"/disc/disc0",disc,key,test,sizeof(test)) ||
        np_file_route(1,"/ps1emu/card0",disc,key,test,sizeof(test)))return MODULE_NO_RESIDENT_END;
-    struct block_device *list[20]={0};bdm_get_bd(list,20);
-    for(unsigned i=0;i<20;++i)if(list[i] && !strcmp(list[i]->name,"ata") && !list[i]->devNr && !list[i]->parNr) {
-        if(drive)return MODULE_NO_RESIDENT_END;
-        drive=list[i];drive_sectors=drive->sectorCount;
+    const char *expected_driver=argc==4?"ata":argv[4];
+    unsigned expected_device=0;
+    if(strcmp(expected_driver,"ata") && strcmp(expected_driver,"usb"))return MODULE_NO_RESIDENT_END;
+    if(argc>=6) {
+        if((argv[5][0]!='0' && argv[5][0]!='1') || argv[5][1])return MODULE_NO_RESIDENT_END;
+        expected_device=(unsigned)(argv[5][0]-'0');
     }
-    if(!drive || !drive->flush || drive->sectorSize!=512)return MODULE_NO_RESIDENT_END;
+    if(!strcmp(expected_driver,"ata") && expected_device)return MODULE_NO_RESIDENT_END;
+    memcpy(save_root,root,sizeof(save_root));strcpy(expected_save_driver,expected_driver);expected_save_device=expected_device;
+    memset(disc_volume,0,16);memset(save_volume,0,16);memset(bindings,0,sizeof(bindings));
+    if(argc==11) {
+        if(!root_valid(argv[6]) || (strcmp(argv[7],"ata") && strcmp(argv[7],"usb")) ||
+           (argv[8][0]!='0' && argv[8][0]!='1') || argv[8][1])return MODULE_NO_RESIDENT_END;
+        memcpy(save_root,argv[6],7);strcpy(expected_save_driver,argv[7]);expected_save_device=(unsigned)(argv[8][0]-'0');
+        if(!strcmp(expected_save_driver,"ata") && expected_save_device)return MODULE_NO_RESIDENT_END;
+        if(strcmp(argv[9],"-") || strcmp(argv[10],"-")) {
+            if(!np_file_volume_id_parse(argv[9],disc_volume) || !np_file_volume_id_parse(argv[10],save_volume))return MODULE_NO_RESIDENT_END;
+        }
+        int same=!strcmp(root,save_root);
+        if(same && (strcmp(expected_driver,expected_save_driver) || expected_device!=expected_save_device || memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
+        if(!same && (!np_file_volume_id_present(disc_volume) || !np_file_volume_id_present(save_volume) || !memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
+    }
     iop_sema_t sema={0};sema.initial=1;sema.max=1;lock=CreateSema(&sema);
     if(lock<0)return MODULE_NO_RESIDENT_END;
     if(np_file_worker_start()<0)return reject_start(0);
+    NpFileWork binding={.operation=NP_FILE_SDK|NP_FILE_BIND,.file=&device,.name=expected_driver,.flags=(int)expected_device};
+    if(np_file_worker_call(&binding)<0)return reject_start(0);
     if(iomanX_AddDrv(&device)!=0)return reject_start(0);
     if(np_file_native_register(&device)!=0) {
         return reject_start(1);
     }
     bdm_RegisterCallback(storage_event);
-    printf("PSXCORE file-bridge=ready root=%s disc=%s saves=%s native-ioman=1.4 flush-errors=limited\n",root,disc,key);
+    printf("PSXCORE file-bridge=ready root=%s disc=%s saves-root=%s saves=%s native-ioman=1.4 flush-errors=limited\n",root,disc,save_root,key);
     return MODULE_RESIDENT_END;
 }

@@ -7,6 +7,7 @@ typedef struct NpNativeFile NpNativeFile;
 enum NpFileOperation {
     NP_FILE_OPEN,NP_FILE_CLOSE,NP_FILE_READ,NP_FILE_WRITE,NP_FILE_SEEK,
     NP_FILE_SEEK64,NP_FILE_STAT,NP_FILE_MOUNT,NP_FILE_SYNC,NP_FILE_RENAME,NP_FILE_DEVCTL,
+    NP_FILE_BIND,
     NP_FILE_SDK=0x100,
 };
 typedef struct {

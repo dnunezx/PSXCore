@@ -10,6 +10,7 @@ I_iomanX_lseek64
 I_iomanX_getstat
 I_iomanX_rename
 I_iomanX_remove
+I_iomanX_ioctl2
 iomanX_IMPORTS_end
 bdm_IMPORTS_start
 I_bdm_get_bd
@@ -22,6 +23,7 @@ I_memcmp
 I_memchr
 I_strlen
 I_strcmp
+I_strcpy
 I_strncmp
 sysclib_IMPORTS_end
 stdio_IMPORTS_start

@@ -4,12 +4,12 @@
 #include "psxcore_file.h"
 int np_file_storage_init(int reset);
 int np_file_storage_init_pops(void);
-const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *out);
-const char *np_file_reopen(const NpFileLaunchRequest *request,int provision);
-const char *np_file_bridge_start(const NpFileLaunchRequest *request);
-const char *np_file_runtime_path(const NpFileLaunchRequest *request,const char *name,char *out,size_t size);
+const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *out);
+const char *np_file_reopen(NpFileLaunchRequestV5 *request,int provision);
+const char *np_file_bridge_start(const NpFileLaunchRequestV5 *request);
+const char *np_file_runtime_path(const NpFileLaunchRequestV5 *request,const char *name,char *out,size_t size);
 void np_file_storage_exit(void);
-int np_file_read_asset(const NpFileLaunchRequest *request,const char *name,void *target,
+int np_file_read_asset(const NpFileLaunchRequestV5 *request,const char *name,void *target,
     unsigned bytes,const unsigned char hash[32]);
 extern int np_file_probe_only;
 #endif

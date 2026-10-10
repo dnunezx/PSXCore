@@ -1,4 +1,4 @@
-/* Original standalone ATA/FAT32/exFAT backend. Frontend-independent. */
+/* Original standalone ATA/USB FAT32/exFAT backend. Frontend-independent. */
 #include "file_storage.h"
 #include "psxcore_hash.h"
 #include "psxcore_boot.h"
@@ -26,8 +26,11 @@
 
 #define MODULE(name) extern unsigned char name##_irx[];extern unsigned int size_##name##_irx
 MODULE(iomanX);MODULE(fileXio);MODULE(ps2dev9);MODULE(bdm);MODULE(bdmfs_fatfs);
-MODULE(ata_bd);MODULE(psxcore_nativegate);MODULE(psxcore_filebridge);
-static char mounted[8];
+MODULE(ata_bd);MODULE(usbd);MODULE(usbmass_bd);MODULE(psxcore_nativegate);MODULE(psxcore_filebridge);
+static char mounted[8],save_mounted[8];
+static uint32_t selected_backend=NP_FILE_BACKEND_ATA;
+/* Zero inherits the game backend, preserving initial/post-reset defaults. */
+static uint32_t selected_save_backend;
 int np_file_probe_only;
 static int load(const char *name,const unsigned char *bytes,unsigned size,const char *args,unsigned length) {
     int result=-1;
@@ -43,6 +46,9 @@ int np_file_storage_init_pops(void) {
     return np_file_storage_init(0);
 }
 int np_file_storage_init(int reset) {
+    uint32_t save_backend=selected_save_backend?selected_save_backend:selected_backend;
+    if((selected_backend!=NP_FILE_BACKEND_ATA && selected_backend!=NP_FILE_BACKEND_USB) ||
+       (save_backend!=NP_FILE_BACKEND_ATA && save_backend!=NP_FILE_BACKEND_USB))return -1;
     if(reset) {
         unsigned i;
         for(i=0;i<300 && !SifIopReset("",0);++i)usleep(10000);
@@ -56,11 +62,16 @@ int np_file_storage_init(int reset) {
         printf("PSXCORE file-storage=lmb-patch result=%d\n",patched);
         if(patched<0)return -1;
     }
-    LOAD(iomanX);LOAD(fileXio);LOAD(ps2dev9);LOAD(bdm);LOAD(bdmfs_fatfs);LOAD(ata_bd);
+    LOAD(iomanX);LOAD(fileXio);LOAD(bdm);LOAD(bdmfs_fatfs);
+    if(selected_backend==NP_FILE_BACKEND_ATA || save_backend==NP_FILE_BACKEND_ATA){LOAD(ps2dev9);LOAD(ata_bd);}
+    if(selected_backend==NP_FILE_BACKEND_USB || save_backend==NP_FILE_BACKEND_USB){LOAD(usbd);LOAD(usbmass_bd);}
     if(fileXioInit()<0)return -1;
     for(unsigned i=0;i<50;++i) {
-        int fd=fileXioDopen("mass0:/");
-        if(fd>=0){int e=fileXioDclose(fd);return e<0?-1:0;}
+        for(unsigned unit=0;unit<10;++unit) {
+            char root[9];snprintf(root,sizeof(root),"mass%u:/",unit);
+            int fd=fileXioDopen(root);
+            if(fd>=0){int e=fileXioDclose(fd);return e<0?-1:0;}
+        }
         usleep(100000);
     }
     return -1;
@@ -148,7 +159,7 @@ static void serial(int fd,uint64_t bytes,char out[16]) {
         }
     }
 }
-static const char *measure(const char *path,NpFileLaunchRequest *r,int identify) {
+static const char *measure(const char *path,NpFileLaunchRequestV4 *r,int identify) {
     iox_stat_t before,after;unsigned char head[NP_VCD_HEADER_BYTES];
     if(fileXioGetStat(path,&before)<0 || !FIO_S_ISREG(before.mode))return "file-image-stat";
     uint64_t bytes=((uint64_t)before.hisize<<32)|before.size;
@@ -160,7 +171,8 @@ static const char *measure(const char *path,NpFileLaunchRequest *r,int identify)
     char driver[8]={0};uint32_t device=UINT32_MAX;
     if(!error && (fileXioIoctl2(fd,USBMASS_IOCTL_GET_DRIVERNAME,NULL,0,driver,sizeof(driver))<0 ||
         fileXioIoctl2(fd,USBMASS_IOCTL_GET_DEVICE_NUMBER,NULL,0,&device,sizeof(device))<0 ||
-        strcmp(driver,"ata") || device))error="file-image-device";
+        !memchr(driver,0,sizeof(driver)) || strcmp(driver,np_file_backend_driver(r->disc.backend)) ||
+        device!=r->disc.device))error="file-image-device";
     unsigned char *buffer=!error?malloc(32768):NULL;
     if(!error && !buffer)error="file-image-memory";
     if(!error && fileXioLseek64(fd,0,SEEK_SET)!=0)error="file-image-seek";
@@ -217,12 +229,64 @@ static int directory(const char *path,int provision) {
     if(e>=0)return FIO_S_ISDIR(st.mode)?0:-1;
     return absent(e) && provision && fileXioMkdir(path,0777)>=0?0:-1;
 }
-static const char *saves(const NpFileLaunchRequest *r,int provision) {
+static int root_valid(const char *root) {
+    return root && strlen(root)==6 && !strncmp(root,"mass",4) && root[4]>='0' && root[4]<='9' && root[5]==':';
+}
+/* The pinned SDK supports these two metadata ioctls on directory handles:
+ * FIL and DIR start with FFOBJID, and only obj.fs->pdrv is consulted. */
+static const char *root_check(const char *root,const NpFileEndpoint *endpoint) {
+    if(!root_valid(root))return "file-volume-root";
+    char path[9],driver[8]={0};uint32_t device=UINT32_MAX;
+    snprintf(path,sizeof(path),"%s/",root);
+    int fd=fileXioDopen(path);if(fd<0)return "file-volume-open";
+    int e=fileXioIoctl2(fd,USBMASS_IOCTL_GET_DRIVERNAME,NULL,0,driver,sizeof(driver));
+    if(e>=0)e=fileXioIoctl2(fd,USBMASS_IOCTL_GET_DEVICE_NUMBER,NULL,0,&device,sizeof(device));
+    int closed=fileXioDclose(fd);
+    if(e<0 || closed<0 || !memchr(driver,0,sizeof(driver)) ||
+       strcmp(driver,np_file_backend_driver(endpoint->backend)) || device!=endpoint->device)return "file-volume-device";
+    return NULL;
+}
+static const char *volume_read(const char *root,unsigned char id[16]) {
+    char path[64];iox_stat_t st;NpFileVolumeMarker marker;unsigned char extra;
+    memset(id,0,16);snprintf(path,sizeof(path),"%s/POPS",root);
+    int parent=fileXioGetStat(path,&st);
+    if(absent(parent))return "file-volume-id-missing";
+    if(parent<0 || !FIO_S_ISDIR(st.mode))return "file-volume-directory";
+    if(join(path,sizeof(path),root,NP_FILE_VOLUME_MARKER))return "file-volume-path";
+    int e=fileXioGetStat(path,&st);
+    if(absent(e))return "file-volume-id-missing";
+    if(e<0 || !FIO_S_ISREG(st.mode) || st.hisize || st.size!=sizeof(marker))return "file-volume-marker-stat";
+    int fd=fileXioOpen(path,FIO_O_RDONLY,0);if(fd<0)return "file-volume-marker-open";
+    e=read_all(fd,&marker,sizeof(marker));if(!e && fileXioRead(fd,&extra,1)!=0)e=-1;
+    int closed=fileXioClose(fd);if(e || closed<0)return "file-volume-marker-read";
+    return np_file_volume_marker_check(&marker,sizeof(marker),id);
+}
+static const char *volume_setup(const char *root,unsigned char id[16],int provision) {
+    if(provision) {
+        if(!np_file_volume_id_present(id))return "file-volume-id-required";
+        char path[64];snprintf(path,sizeof(path),"%s/POPS",root);
+        if(directory(path,1))return "file-volume-directory";
+    }
+    unsigned char actual[16];const char *error=volume_read(root,actual);
+    if(error && strcmp(error,"file-volume-id-missing"))return error;
+    if(error) {
+        if(!np_file_volume_id_present(id))return provision?"file-volume-id-required":NULL;
+        if(!provision)return error;
+        char path[64];snprintf(path,sizeof(path),"%s/POPS",root);
+        if(directory(path,1) || join(path,sizeof(path),root,NP_FILE_VOLUME_MARKER))return "file-volume-directory";
+        NpFileVolumeMarker marker;np_file_volume_marker_init(&marker,id);
+        if(new_file(path,&marker,sizeof(marker),0))return "file-volume-marker-create";
+        error=volume_read(root,actual);if(error)return error;
+    }
+    if(np_file_volume_id_present(id) && memcmp(id,actual,16))return "file-volume-id-mismatch";
+    memcpy(id,actual,16);return NULL;
+}
+static const char *saves(const NpFileLaunchRequestV4 *r,int provision) {
     if(np_file_probe_only)return NULL;
     char base[96],path[128],owner[66],actual[66];iox_stat_t st;
-    snprintf(base,sizeof(base),"%s/POPS",mounted);if(directory(base,provision))return "file-save-directory";
-    snprintf(base,sizeof(base),"%s/POPS/SAVES",mounted);if(directory(base,provision))return "file-save-directory";
-    snprintf(base,sizeof(base),"%s/POPS/SAVES/%s",mounted,r->save_key);if(directory(base,provision))return "file-save-directory";
+    snprintf(base,sizeof(base),"%s/POPS",save_mounted);if(directory(base,provision))return "file-save-directory";
+    snprintf(base,sizeof(base),"%s/POPS/SAVES",save_mounted);if(directory(base,provision))return "file-save-directory";
+    snprintf(base,sizeof(base),"%s/POPS/SAVES/%s",save_mounted,r->save_key);if(directory(base,provision))return "file-save-directory";
     for(unsigned i=0;i<32;++i)snprintf(owner+i*2,3,"%02x",r->disc_sha256[i]);
     owner[64]='\n';owner[65]=0;
     snprintf(path,sizeof(path),"%s/owner.sha256",base);
@@ -251,67 +315,157 @@ static const char *saves(const NpFileLaunchRequest *r,int provision) {
     }
     return NULL;
 }
-const char *np_file_reopen(const NpFileLaunchRequest *r,int provision) {
-    const char *error=np_file_launch_check(r,sizeof(*r),NULL);if(error)return error;
-    unsigned matches=0;mounted[0]=0;
+static const char *storage_contract(const NpFileLaunchRequestV5 *r) {
+    const char *error=np_file_launch_check_v5(r,sizeof(*r),NULL);if(error)return error;
+    const NpFileLaunchRequestV4 *f=&r->launch;
+    if((f->disc.backend!=NP_FILE_BACKEND_ATA && f->disc.backend!=NP_FILE_BACKEND_USB) ||
+       (f->saves.backend!=NP_FILE_BACKEND_ATA && f->saves.backend!=NP_FILE_BACKEND_USB))return "file-storage-backend-unimplemented";
+    uint32_t save_backend=selected_save_backend?selected_save_backend:selected_backend;
+    if(f->disc.backend!=selected_backend || f->saves.backend!=save_backend)return "file-storage-backend-mismatch";
+    if((f->disc.required|f->saves.required)&~NP_FILE_SAVE_CAPS)return "file-storage-capabilities-unavailable";
+    return NULL;
+}
+static const char *save_discover(const NpFileLaunchRequestV5 *r) {
+    save_mounted[0]=0;
+    if(!np_file_volume_id_present(r->save_volume)) {
+        if(r->launch.disc.backend!=r->launch.saves.backend || r->launch.disc.device!=r->launch.saves.device)return "file-launch-volume-identities";
+        memcpy(save_mounted,mounted,sizeof(save_mounted));return NULL;
+    }
+    unsigned matches=0;
     for(unsigned i=0;i<10;++i) {
-        char root[8],path[NP_FILE_PATH_BYTES+8];snprintf(root,sizeof(root),"mass%u:",i);
-        if(join(path,sizeof(path),root,r->disc_path))return "file-image-path";
-        NpFileLaunchRequest found;np_file_launch_init(&found);
-        error=measure(path,&found,1);
-        if(error)continue;
-        if(found.image_bytes!=r->image_bytes || memcmp(found.disc_sha256,r->disc_sha256,32) ||
-           memcmp(found.header_sha1,r->header_sha1,20) || strcmp(found.serial,r->serial))continue;
-        if(++matches>1)return "file-image-volume-ambiguous";
-        memcpy(mounted,root,sizeof(mounted));
+        char root[8];unsigned char id[16];snprintf(root,sizeof(root),"mass%u:",i);
+        if(root_check(root,&r->launch.saves) || volume_read(root,id) || memcmp(id,r->save_volume,16))continue;
+        if(++matches>1){save_mounted[0]=0;return "file-save-volume-ambiguous";}
+        memcpy(save_mounted,root,sizeof(save_mounted));
+    }
+    return matches==1?NULL:"file-save-volume-not-found-or-changed";
+}
+const char *np_file_reopen(NpFileLaunchRequestV5 *r,int provision) {
+    mounted[0]=save_mounted[0]=0;
+    const char *error=storage_contract(r);if(error)return error;
+    NpFileLaunchRequestV4 *f=&r->launch;
+    unsigned matches=0,identity_matches=0;unsigned char selected_id[16]={0};
+    for(unsigned i=0;i<10;++i) {
+        char root[8],path[NP_FILE_PATH_BYTES+8];unsigned char id[16];snprintf(root,sizeof(root),"mass%u:",i);
+        if(root_check(root,&f->disc))continue;
+        const char *marker_error=volume_read(root,id);
+        if(np_file_volume_id_present(r->disc_volume) && (marker_error || memcmp(id,r->disc_volume,16)))continue;
+        if(np_file_volume_id_present(r->disc_volume) && ++identity_matches>1){mounted[0]=0;return "file-image-volume-ambiguous";}
+        if(join(path,sizeof(path),root,f->disc_path))return "file-image-path";
+        NpFileLaunchRequestV4 found;np_file_launch_init_v4(&found);found.disc=f->disc;found.saves=f->saves;
+        error=measure(path,&found,1);if(error)continue;
+        if(found.image_bytes!=f->image_bytes || memcmp(found.disc_sha256,f->disc_sha256,32) ||
+           memcmp(found.header_sha1,f->header_sha1,20) || strcmp(found.serial,f->serial))continue;
+        if(marker_error && strcmp(marker_error,"file-volume-id-missing")){mounted[0]=0;return marker_error;}
+        if(++matches>1){mounted[0]=0;return "file-image-volume-ambiguous";}
+        memcpy(mounted,root,sizeof(mounted));memcpy(selected_id,id,16);
     }
     if(matches!=1)return "file-image-not-found-or-changed";
-    printf("PSXCORE file-image=verified root=%s bytes=%u serial=%s\n",mounted,(unsigned)r->image_bytes,r->serial[0]?r->serial:"unidentified");
-    return saves(r,provision);
+    /* Legacy requests acquire an existing marker on first verification. */
+    if(!np_file_volume_id_present(r->disc_volume) && np_file_volume_id_present(selected_id)) {
+        memcpy(r->disc_volume,selected_id,16);memcpy(r->save_volume,selected_id,16);
+    }
+    error=save_discover(r);
+    if(!error)error=saves(f,provision);
+    if(error){mounted[0]=save_mounted[0]=0;return error;}
+    printf("PSXCORE file-image=verified root=%s saves-root=%s bytes=%u serial=%s volume-id=%s\n",mounted,save_mounted,
+        (unsigned)f->image_bytes,f->serial[0]?f->serial:"unidentified",np_file_volume_id_present(r->disc_volume)?"verified":"legacy-unbound");
+    return NULL;
 }
-const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
-    np_file_probe_only=0;
-    np_file_launch_init(r);const char *selected=NULL,*request_path=NULL;int provision=0,overrides=0;
+static uint32_t backend_number(const char *name) {
+    return !strcmp(name,"ata")?NP_FILE_BACKEND_ATA:!strcmp(name,"usb")?NP_FILE_BACKEND_USB:0;
+}
+static int device_number(const char *number,uint32_t *out) {
+    if((number[0]!='0' && number[0]!='1') || number[1])return 0;
+    *out=(uint32_t)(number[0]-'0');return 1;
+}
+const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *r) {
+    np_file_probe_only=0;mounted[0]=save_mounted[0]=0;
+    np_file_launch_init_v5(r);selected_backend=NP_FILE_BACKEND_ATA;selected_save_backend=0;
+    NpFileLaunchRequestV4 *f=&r->launch;
+    const char *selected=NULL,*request_path=NULL,*save_root=NULL;
+    int provision=0,overrides=0,backend_seen=0,device_seen=0,save_backend_seen=0,save_device_seen=0;
+    int disc_id_seen=0,save_id_seen=0,init_disc_id=0,init_save_id=0;
     for(int i=1;i<argc;++i) {
         if(!strcmp(argv[i],"--file") && i+1<argc && !selected && !request_path)selected=argv[++i];
         else if(!strcmp(argv[i],"--file-request") && i+1<argc && !selected && !request_path)request_path=argv[++i];
         else if(!strcmp(argv[i],"--init-cards"))provision=1;
         else if(!strcmp(argv[i],"--probe-synthetic"))np_file_probe_only=1;
-        else if(!strcmp(argv[i],"--pcsx2") && !request_path){r->environment=NP_ENV_PCSX2;overrides=1;}
-        else if(!strcmp(argv[i],"--license") && !request_path){r->options.mode=NP_COMPAT_CUSTOM;r->options.enable|=NP_FIX_LICENSE;overrides=1;}
+        else if(!strcmp(argv[i],"--backend") && i+1<argc && !backend_seen) {
+            backend_seen=1;selected_backend=backend_number(argv[++i]);if(!selected_backend)return "file-storage-backend-unimplemented";
+        } else if(!strcmp(argv[i],"--save-backend") && i+1<argc && !save_backend_seen) {
+            save_backend_seen=1;selected_save_backend=backend_number(argv[++i]);if(!selected_save_backend)return "file-storage-backend-unimplemented";
+        } else if(!strcmp(argv[i],"--device") && i+1<argc && !device_seen) {
+            device_seen=1;overrides=1;if(!device_number(argv[++i],&f->disc.device))return "file-endpoint-device";
+        } else if(!strcmp(argv[i],"--save-device") && i+1<argc && !save_device_seen) {
+            save_device_seen=1;overrides=1;if(!device_number(argv[++i],&f->saves.device))return "file-endpoint-device";
+        } else if(!strcmp(argv[i],"--save-volume") && i+1<argc && !save_root) {
+            save_root=argv[++i];overrides=1;if(!root_valid(save_root))return "file-volume-root";
+        } else if(!strcmp(argv[i],"--volume-id") && i+1<argc && !disc_id_seen) {
+            disc_id_seen=1;overrides=1;if(!np_file_volume_id_parse(argv[++i],r->disc_volume))return "file-volume-id-format";
+        } else if(!strcmp(argv[i],"--save-volume-id") && i+1<argc && !save_id_seen) {
+            save_id_seen=1;overrides=1;if(!np_file_volume_id_parse(argv[++i],r->save_volume))return "file-volume-id-format";
+        } else if(!strcmp(argv[i],"--init-volume-id") && !init_disc_id){init_disc_id=1;overrides=1;}
+        else if(!strcmp(argv[i],"--init-save-volume-id") && !init_save_id){init_save_id=1;overrides=1;}
+        else if(!strcmp(argv[i],"--pcsx2")){f->environment=NP_ENV_PCSX2;overrides=1;}
+        else if(!strcmp(argv[i],"--license")){f->options.mode=NP_COMPAT_CUSTOM;f->options.enable|=NP_FIX_LICENSE;overrides=1;}
         else return "file-launch-arguments";
     }
-    if((!selected && !request_path) || (provision && np_file_probe_only) || (request_path && overrides))return "file-launch-arguments";
+    f->disc.backend=selected_backend;f->saves.backend=selected_save_backend?selected_save_backend:selected_backend;
+    if(!save_device_seen && f->saves.backend==f->disc.backend)f->saves.device=f->disc.device;
+    if((!selected && !request_path) || ((provision||init_disc_id||init_save_id) && np_file_probe_only) ||
+       (request_path && overrides) || (init_disc_id && !disc_id_seen) || (init_save_id && (!save_root||!save_id_seen)))return "file-launch-arguments";
+    if(np_file_endpoint_check(&f->disc,0) || np_file_endpoint_check(&f->saves,1))return "file-endpoint-device";
     if(np_file_storage_init(1))return "file-storage-init";
     if(request_path) {
         int fd=fileXioOpen(request_path,FIO_O_RDONLY,0);if(fd<0)return "file-request-open";
-        int e=read_all(fd,r,sizeof(*r));unsigned char extra;
-        if(!e && fileXioRead(fd,&extra,1)!=0)e=-1;
+        unsigned char bytes[sizeof(*r)],extra;size_t size=0;int e=read_all(fd,bytes,8);
+        if(!e) {
+            unsigned version=bytes[4]|(unsigned)bytes[5]<<8;
+            size=version==NP_FILE_VERSION?sizeof(NpFileLaunchRequest):version==NP_FILE_VERSION_4?sizeof(NpFileLaunchRequestV4):version==NP_FILE_VERSION_5?sizeof(*r):0;
+            if(!size || read_all(fd,bytes+8,(unsigned)size-8) || fileXioRead(fd,&extra,1)!=0)e=-1;
+        }
         int closed=fileXioClose(fd);if(e || closed<0)return "file-request-read";
+        const char *error=np_file_launch_decode_v5(bytes,size,r,NULL);if(error)return error;
     } else {
         if(strlen(selected)<8 || strncmp(selected,"mass",4) || selected[4]<'0' || selected[4]>'9' || selected[5]!=':' ||
-           strlen(selected+6)>=sizeof(r->disc_path) || !np_file_path_valid(selected+6,sizeof(r->disc_path),0))return "file-image-path";
-        memcpy(r->disc_path,selected+6,strlen(selected+6)+1);
-        const char *error=measure(selected,r,1);if(error)return error;
-        for(unsigned i=0;i<16;++i)snprintf(r->save_key+i*2,3,"%02x",r->disc_sha256[i]);
+           strlen(selected+6)>=sizeof(f->disc_path) || !np_file_path_valid(selected+6,sizeof(f->disc_path),0))return "file-image-path";
+        memcpy(f->disc_path,selected+6,strlen(selected+6)+1);
+        const char *error=measure(selected,f,1);if(error)return error;
+        for(unsigned i=0;i<16;++i)snprintf(f->save_key+i*2,3,"%02x",f->disc_sha256[i]);
+        char disc_root[8]={0};memcpy(disc_root,selected,6);
+        error=volume_setup(disc_root,r->disc_volume,init_disc_id);if(error)return error;
+        if(save_root) {
+            error=root_check(save_root,&f->saves);if(error)return error;
+            if(!np_file_volume_id_present(r->disc_volume))return "file-launch-volume-identities";
+            error=volume_setup(save_root,r->save_volume,init_save_id);if(error)return error;
+            if(!np_file_volume_id_present(r->save_volume))return "file-launch-volume-identities";
+        } else if(!save_id_seen)memcpy(r->save_volume,r->disc_volume,16);
     }
     return np_file_reopen(r,provision);
 }
-const char *np_file_runtime_path(const NpFileLaunchRequest *r,const char *name,char *out,size_t size) {
-    int n=snprintf(out,size,"%s%s/%s",mounted,r->runtime_root,name);
+const char *np_file_runtime_path(const NpFileLaunchRequestV5 *r,const char *name,char *out,size_t size) {
+    int n=snprintf(out,size,"%s%s/%s",mounted,r->launch.runtime_root,name);
     return !mounted[0] || n<0 || (size_t)n>=size?"file-runtime-path":NULL;
 }
-int np_file_read_asset(const NpFileLaunchRequest *r,const char *name,void *target,unsigned bytes,const unsigned char expected[32]) {
+int np_file_read_asset(const NpFileLaunchRequestV5 *r,const char *name,void *target,unsigned bytes,const unsigned char expected[32]) {
     char path[160];iox_stat_t st;
     if(np_file_runtime_path(r,name,path,sizeof(path)) || fileXioGetStat(path,&st)<0 || st.hisize || st.size!=bytes)return -1;
     int fd=fileXioOpen(path,FIO_O_RDONLY,0);if(fd<0)return -1;
     int e=read_all(fd,target,bytes);int closed=fileXioClose(fd);if(e || closed<0)return -1;
     unsigned char hash[32];np_boot_sha256(target,bytes,hash);return memcmp(hash,expected,32)?-1:0;
 }
-const char *np_file_bridge_start(const NpFileLaunchRequest *r) {
-    char args[NP_FILE_PATH_BYTES+48];unsigned n=0;
-    const char *values[3]={mounted,r->disc_path,r->save_key};
-    for(unsigned i=0;i<3;++i){unsigned length=strlen(values[i])+1;memcpy(args+n,values[i],length);n+=length;}
+const char *np_file_bridge_start(const NpFileLaunchRequestV5 *r) {
+    const char *error=storage_contract(r);if(error)return error;
+    if(!mounted[0] || !save_mounted[0])return "file-bridge-volume-unverified";
+    const NpFileLaunchRequestV4 *f=&r->launch;
+    char args[NP_FILE_PATH_BYTES+160];unsigned n=0;
+    char number[2]={(char)('0'+f->disc.device),0},save_number[2]={(char)('0'+f->saves.device),0},disc_id[33]="-",save_id[33]="-";
+    if(np_file_volume_id_present(r->disc_volume))np_file_volume_id_text(r->disc_volume,disc_id);
+    if(np_file_volume_id_present(r->save_volume))np_file_volume_id_text(r->save_volume,save_id);
+    const char *values[10]={mounted,f->disc_path,f->save_key,np_file_backend_driver(f->disc.backend),number,
+        save_mounted,np_file_backend_driver(f->saves.backend),save_number,disc_id,save_id};
+    for(unsigned i=0;i<10;++i){unsigned length=strlen(values[i])+1;if(length>sizeof(args)-n)return "file-bridge-arguments";memcpy(args+n,values[i],length);n+=length;}
     if(load("psxcore_filebridge",psxcore_filebridge_irx,size_psxcore_filebridge_irx,args,n))return "file-bridge-load";
     if(np_file_probe_only)return NULL;
     uint32_t state[4];
