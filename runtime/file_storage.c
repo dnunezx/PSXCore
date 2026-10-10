@@ -2,6 +2,7 @@
 #include "file_storage.h"
 #include "psxcore_hash.h"
 #include "psxcore_boot.h"
+#include "psxcore_shared_store.h"
 #include <limits.h>
 #ifdef NP_HOST_TEST
 #include "file_storage_stub.h"
@@ -32,6 +33,7 @@ static uint32_t selected_backend=NP_FILE_BACKEND_ATA;
 /* Zero inherits the game backend, preserving initial/post-reset defaults. */
 static uint32_t selected_save_backend;
 int np_file_probe_only;
+int np_file_management_only;
 static int load(const char *name,const unsigned char *bytes,unsigned size,const char *args,unsigned length) {
     int result=-1;
     int id=SifExecModuleBuffer((void *)bytes,size,length,args,&result);
@@ -281,12 +283,22 @@ static const char *volume_setup(const char *root,unsigned char id[16],int provis
     if(np_file_volume_id_present(id) && memcmp(id,actual,16))return "file-volume-id-mismatch";
     memcpy(id,actual,16);return NULL;
 }
-static const char *saves(const NpFileLaunchRequestV4 *r,int provision) {
+static const char *saves(const NpFileLaunchRequestV5 *request,int provision) {
+    const NpFileLaunchRequestV4 *r=&request->launch;
+    if(r->save_mode==NP_SAVE_SHARED) {
+        if(np_file_probe_only || provision)return "file-shared-operation-conflict";
+        char base[96];NpSharedSet set;
+        snprintf(base,sizeof(base),"%s/POPS/SAVES/%s",save_mounted,r->save_key);
+        const char *error=np_shared_store_read(base,&set);
+        return error?error:np_shared_match(&set,NP_SHARED_FILE,r->save_key,request->save_volume,r->disc_sha256);
+    }
     if(np_file_probe_only)return NULL;
     char base[96],path[128],owner[66],actual[66];iox_stat_t st;
     snprintf(base,sizeof(base),"%s/POPS",save_mounted);if(directory(base,provision))return "file-save-directory";
     snprintf(base,sizeof(base),"%s/POPS/SAVES",save_mounted);if(directory(base,provision))return "file-save-directory";
     snprintf(base,sizeof(base),"%s/POPS/SAVES/%s",save_mounted,r->save_key);if(directory(base,provision))return "file-save-directory";
+    static const char *const shared_files[]={"shared.set","shared.set.new","shared.set.prev","shared.set.bak"};
+    for(unsigned i=0;i<4;++i){snprintf(path,sizeof(path),"%s/%s",base,shared_files[i]);if(!absent(fileXioGetStat(path,&st)))return "file-save-shared-conflict";}
     for(unsigned i=0;i<32;++i)snprintf(owner+i*2,3,"%02x",r->disc_sha256[i]);
     owner[64]='\n';owner[65]=0;
     snprintf(path,sizeof(path),"%s/owner.sha256",base);
@@ -340,7 +352,7 @@ static const char *save_discover(const NpFileLaunchRequestV5 *r) {
     }
     return matches==1?NULL:"file-save-volume-not-found-or-changed";
 }
-const char *np_file_reopen(NpFileLaunchRequestV5 *r,int provision) {
+static const char *locate(NpFileLaunchRequestV5 *r) {
     mounted[0]=save_mounted[0]=0;
     const char *error=storage_contract(r);if(error)return error;
     NpFileLaunchRequestV4 *f=&r->launch;
@@ -366,11 +378,39 @@ const char *np_file_reopen(NpFileLaunchRequestV5 *r,int provision) {
         memcpy(r->disc_volume,selected_id,16);memcpy(r->save_volume,selected_id,16);
     }
     error=save_discover(r);
-    if(!error)error=saves(f,provision);
     if(error){mounted[0]=save_mounted[0]=0;return error;}
     printf("PSXCORE file-image=verified root=%s saves-root=%s bytes=%u serial=%s volume-id=%s\n",mounted,save_mounted,
         (unsigned)f->image_bytes,f->serial[0]?f->serial:"unidentified",np_file_volume_id_present(r->disc_volume)?"verified":"legacy-unbound");
     return NULL;
+}
+const char *np_file_reopen(NpFileLaunchRequestV5 *r,int provision) {
+    const char *error=locate(r);
+    if(!error)error=saves(r,provision);
+    if(error)mounted[0]=save_mounted[0]=0;
+    return error;
+}
+static const char *manage_shared(const NpFileLaunchRequestV5 *r,const char *name,int enroll,int copy) {
+    const NpFileLaunchRequestV4 *f=&r->launch;
+    char base[96];snprintf(base,sizeof(base),"%s/POPS/SAVES/%s",save_mounted,f->save_key);
+    if(name) {
+        NpSharedSet set;const char *error=np_shared_init(&set,NP_SHARED_FILE,f->save_key,name,r->save_volume);
+        if(!error)error=np_shared_member(&set,f->disc_sha256,1);
+        if(error)return error;
+        char source[96];source[0]=0;
+        if(copy) {
+            NpFileLaunchRequestV5 private=*r;private.launch.save_mode=NP_SAVE_ISOLATED;
+            for(unsigned i=0;i<16;++i)snprintf(private.launch.save_key+i*2,3,"%02x",f->disc_sha256[i]);
+            error=saves(&private,0);if(error)return error;
+            snprintf(source,sizeof(source),"%s/POPS/SAVES/%s",save_mounted,private.launch.save_key);
+        }
+        char parent[64];snprintf(parent,sizeof(parent),"%s/POPS/SAVES",save_mounted);
+        if(directory(parent,1) || directory(base,1))return "file-save-directory";
+        return np_shared_store_create(base,&set,copy?source:NULL);
+    }
+    NpSharedSet current,next;const char *error=np_shared_store_read(base,&current);if(error)return error;
+    if(current.storage!=NP_SHARED_FILE || strcmp(current.key,f->save_key) || memcmp(current.volume,r->save_volume,16))return "shared-set-identity";
+    next=current;error=np_shared_member(&next,f->disc_sha256,enroll);
+    return error?error:np_shared_store_update(base,&current,&next);
 }
 static uint32_t backend_number(const char *name) {
     return !strcmp(name,"ata")?NP_FILE_BACKEND_ATA:!strcmp(name,"usb")?NP_FILE_BACKEND_USB:0;
@@ -380,10 +420,11 @@ static int device_number(const char *number,uint32_t *out) {
     *out=(uint32_t)(number[0]-'0');return 1;
 }
 const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *r) {
-    np_file_probe_only=0;mounted[0]=save_mounted[0]=0;
+    np_file_probe_only=np_file_management_only=0;mounted[0]=save_mounted[0]=0;
     np_file_launch_init_v5(r);selected_backend=NP_FILE_BACKEND_ATA;selected_save_backend=0;
     NpFileLaunchRequestV4 *f=&r->launch;
     const char *selected=NULL,*request_path=NULL,*save_root=NULL;
+    const char *shared_key=NULL,*shared_name=NULL;int membership=0,copy_private=0;
     int provision=0,overrides=0,backend_seen=0,device_seen=0,save_backend_seen=0,save_device_seen=0;
     int disc_id_seen=0,save_id_seen=0,init_disc_id=0,init_save_id=0;
     for(int i=1;i<argc;++i) {
@@ -391,6 +432,14 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *r) {
         else if(!strcmp(argv[i],"--file-request") && i+1<argc && !selected && !request_path)request_path=argv[++i];
         else if(!strcmp(argv[i],"--init-cards"))provision=1;
         else if(!strcmp(argv[i],"--probe-synthetic"))np_file_probe_only=1;
+        else if(!strcmp(argv[i],"--shared-set") && i+1<argc && !shared_key) {
+            shared_key=argv[++i];overrides=1;
+            if(!np_shared_key_valid(shared_key,NP_SHARED_FILE))return "shared-set-format";
+        } else if(!strcmp(argv[i],"--create-shared") && i+1<argc && !shared_name) {
+            shared_name=argv[++i];np_file_management_only=1;overrides=1;
+        } else if(!strcmp(argv[i],"--copy-private") && !copy_private){copy_private=1;overrides=1;}
+        else if(!strcmp(argv[i],"--enroll-shared") && !membership){membership=1;np_file_management_only=1;overrides=1;}
+        else if(!strcmp(argv[i],"--unenroll-shared") && !membership){membership=-1;np_file_management_only=1;overrides=1;}
         else if(!strcmp(argv[i],"--backend") && i+1<argc && !backend_seen) {
             backend_seen=1;selected_backend=backend_number(argv[++i]);if(!selected_backend)return "file-storage-backend-unimplemented";
         } else if(!strcmp(argv[i],"--save-backend") && i+1<argc && !save_backend_seen) {
@@ -415,6 +464,8 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *r) {
     if(!save_device_seen && f->saves.backend==f->disc.backend)f->saves.device=f->disc.device;
     if((!selected && !request_path) || ((provision||init_disc_id||init_save_id) && np_file_probe_only) ||
        (request_path && overrides) || (init_disc_id && !disc_id_seen) || (init_save_id && (!save_root||!save_id_seen)))return "file-launch-arguments";
+    if((np_file_management_only && !shared_key) || (shared_name && membership) || (copy_private && !shared_name) ||
+       (shared_key && (provision || np_file_probe_only)))return "file-shared-operation-conflict";
     if(np_file_endpoint_check(&f->disc,0) || np_file_endpoint_check(&f->saves,1))return "file-endpoint-device";
     if(np_file_storage_init(1))return "file-storage-init";
     if(request_path) {
@@ -441,6 +492,15 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequestV5 *r) {
             error=volume_setup(save_root,r->save_volume,init_save_id);if(error)return error;
             if(!np_file_volume_id_present(r->save_volume))return "file-launch-volume-identities";
         } else if(!save_id_seen)memcpy(r->save_volume,r->disc_volume,16);
+        if(shared_key){strcpy(f->save_key,shared_key);f->save_mode=NP_SAVE_SHARED;}
+    }
+    if(np_file_management_only) {
+        const char *error=locate(r);
+        if(!error)error=manage_shared(r,shared_name,membership>0,copy_private);
+        if(error){mounted[0]=save_mounted[0]=0;return error;}
+        printf("PSXCORE shared-set=%s operation=%s cards=%s execution=disabled\n",f->save_key,
+            shared_name?"created":membership>0?"enrolled":"unenrolled",shared_name?(copy_private?"copied-private":"blank"):"preserved");
+        return NULL;
     }
     return np_file_reopen(r,provision);
 }
@@ -458,6 +518,8 @@ int np_file_read_asset(const NpFileLaunchRequestV5 *r,const char *name,void *tar
 const char *np_file_bridge_start(const NpFileLaunchRequestV5 *r) {
     const char *error=storage_contract(r);if(error)return error;
     if(!mounted[0] || !save_mounted[0])return "file-bridge-volume-unverified";
+    if(np_file_management_only)return "file-bridge-management-only";
+    error=saves(r,0);if(error)return error;
     const NpFileLaunchRequestV4 *f=&r->launch;
     char args[NP_FILE_PATH_BYTES+160];unsigned n=0;
     char number[2]={(char)('0'+f->disc.device),0},save_number[2]={(char)('0'+f->saves.device),0},disc_id[33]="-",save_id[33]="-";
@@ -471,6 +533,7 @@ const char *np_file_bridge_start(const NpFileLaunchRequestV5 *r) {
     uint32_t state[4];
     if(fileXioDevctl("pfs1:",NP_FILE_CTL_FLUSH,NULL,0,NULL,0)<0 ||
        fileXioDevctl("pfs1:",NP_FILE_CTL_STATUS,NULL,0,state,sizeof(state))<0 || state[0]!=1 || state[1])return "file-bridge-flush";
-    printf("PSXCORE file-saves=ready isolated=yes flush-callback=completed device-errors=limited durability=unverified\n");
+    printf("PSXCORE file-saves=ready mode=%s flush-callback=completed device-errors=limited durability=unverified\n",
+        f->save_mode==NP_SAVE_SHARED?"shared-explicit":"isolated");
     return NULL;
 }

@@ -12,4 +12,5 @@ void np_file_storage_exit(void);
 int np_file_read_asset(const NpFileLaunchRequestV5 *request,const char *name,void *target,
     unsigned bytes,const unsigned char hash[32]);
 extern int np_file_probe_only;
+extern int np_file_management_only;
 #endif

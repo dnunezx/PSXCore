@@ -199,9 +199,17 @@ const char *np_file_launch_check_v5(const void *bytes,size_t size,NpCompatResult
     if(!bytes || size!=sizeof(r))return "file-launch-size";
     memcpy(&r,bytes,sizeof(r));
     if(r.launch.version!=NP_FILE_VERSION_5 || r.launch.size!=sizeof(r))return "file-launch-version";
+    int shared=r.launch.save_mode==NP_SAVE_SHARED;
+    /* Shared ownership is defined only for volume-bound v5 requests. Keep
+     * legacy v3/v4 shared requests rejected by their original validators. */
+    if(shared)r.launch.save_mode=NP_SAVE_ISOLATED;
     r.launch.version=NP_FILE_VERSION_4;r.launch.size=sizeof(r.launch);
     const char *error=np_file_launch_check_v4(&r.launch,sizeof(r.launch),resolved);if(error)return error;
     int disc=np_file_volume_id_present(r.disc_volume),saves=np_file_volume_id_present(r.save_volume);
+    if(shared && (!disc || !saves)) {
+        if(resolved)memset(resolved,0,sizeof(*resolved));
+        return "file-shared-volume-required";
+    }
     int endpoints_differ=r.launch.disc.backend!=r.launch.saves.backend || r.launch.disc.device!=r.launch.saves.device;
     if(disc!=saves || (endpoints_differ && (!disc || !memcmp(r.disc_volume,r.save_volume,16)))) {
         if(resolved)memset(resolved,0,sizeof(*resolved));

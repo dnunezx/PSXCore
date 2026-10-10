@@ -64,6 +64,12 @@ static int install_interlace_presentation_adapter(void) {
 }
 #endif
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#ifndef NP_POPS_BLOCK_LIMIT
+#define NP_POPS_BLOCK_LIMIT 0
+#endif
+#if NP_POPS_BLOCK_LIMIT < 0 || NP_POPS_BLOCK_LIMIT > 256
+#error "POPS block limit must be 0 (native default) or 1..256 instructions"
+#endif
 extern void np_code_guard_compile(void),np_code_guard_validate(void),np_code_guard_capture(void);
 extern char np_code_guard_resident_start[],np_code_guard_resident_end[];
 static int install_code_guard(const NpElf *elf) {
@@ -98,6 +104,11 @@ static int install_code_guard(const NpElf *elf) {
     const uint32_t replacement[2]={0x08000000u|((uint32_t)capture>>2),expected[2][0]};
     return queue_word(sites[0],expected[0][0],0x0c000000u|((uint32_t)hook>>2)) ||
            queue_word(sites[1],expected[1][0],0x2442b000) ||
+#if NP_POPS_BLOCK_LIMIT
+           /* Native decoder window; retain exact validation for every word
+            * decoded into each resulting block. Apply before POPS starts. */
+           queue_word(0x502750,0x100,NP_POPS_BLOCK_LIMIT) ||
+#endif
            np_patch_add(&patch_set,sites[2],expected[2],replacement,8)?-1:0;
 }
 #if NP_PCM_BUFFER_RATE
@@ -659,6 +670,7 @@ int main(int argc,char **argv) {
     if(file_launch) {
         const char *error=np_file_prepare(argc,argv,&file_request);
         if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        if(np_file_management_only){trace("PSXCORE card-management=complete before-pops-transfer=yes\n");goto wait;}
         memcpy(mode,"launch\n",8);got=7;
     } else {
         FILE *config=fopen("host:/psxcore-runtime-mode.txt","rb");
