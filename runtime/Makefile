@@ -3,7 +3,6 @@ EE_BIN = psxcore-runtime-bootstrap.elf
 FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd usbd usbmass_bd psxcore_nativegate psxcore_filebridge
 EE_OBJS = main.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
 EE_INCS = -I../../include
-EE_OBJS += shared.o shared_store.o
 EE_OBJS += igrobserve.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 NP_MEMORY_ACCESS_ADAPTER ?= 1

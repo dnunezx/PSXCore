@@ -16,7 +16,7 @@
 #include <usbhdfsd-common.h>
 #endif
 IRX_ID("psxcore_file",1,0);
-static char root[8],save_root[8],disc[NP_FILE_PATH_BYTES],key[33];
+static char root[8],save_root[8],disc[NP_FILE_PATH_BYTES],cards[2][NP_FILE_PATH_BYTES];
 static unsigned char disc_volume[16],save_volume[16];
 static char expected_save_driver[8];static unsigned expected_save_device;
 static int lock=-1;
@@ -31,7 +31,7 @@ typedef struct {
 static DiskBinding bindings[2];
 static volatile int removed;
 /* BDM's callback has no device identity. Conservatively latch every unmount;
- * reconnection requires a fresh launch and full image verification. */
+ * reconnection requires a fresh launch and bounded image verification. */
 static void storage_event(int mounted){if(!mounted)removed=1;}
 
 /* Never reuse an unrelated disk after removal. Filesystem handles additionally
@@ -60,7 +60,7 @@ static int enter(void) {
 static int leave(int result){SignalSema(lock);return result;}
 static int path(unsigned unit,const char *name,char out[NP_FILE_PATH_BYTES+8]) {
     char relative[NP_FILE_PATH_BYTES];
-    if(np_file_route(unit,name,disc,key,relative,sizeof(relative)))return -EACCES;
+    if(np_file_route(unit,name,disc,cards,relative,sizeof(relative)))return -EACCES;
     const char *selected=unit==1?save_root:root;
     size_t r=strlen(selected),n=strlen(relative);
     if(r+n>=NP_FILE_PATH_BYTES+8)return -ENAMETOOLONG;
@@ -157,10 +157,14 @@ static int execute_bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
     int e;
     if(directory) {
         /* Route through a validated card name, then stat its actual parent.
-         * The bootstrap has already verified ownership and both cards there.
+         * The bootstrap has already verified both selected cards.
          * No other directory alias or mkdir operation is admitted. */
         e=path(1,"/ps1emu/card0",target);
-        if(!e)target[strlen(target)-sizeof("/card0")+1]=0;
+        if(!e) {
+            size_t n=strlen(target);
+            while(n && target[n-1]!='/')--n;
+            target[n-1]=0;
+        }
     } else e=path(f->unit,name,target);
     if(e)return e;
     e=enter();if(e)return e;
@@ -173,7 +177,7 @@ static int execute_bridge_stat(iop_file_t *f,const char *name,iox_stat_t *st) {
 static int execute_bridge_mount(iop_file_t *f,const char *name,const char *device,int flags,void *args,int length) {
     (void)flags;(void)args;(void)length;
     if(!name || *name || !device || f->unit<0 || f->unit>1 ||
-       strcmp(device,f->unit?"hdd0:PP.PSXC.FILE":"hdd0:PP.FILE"))return -EINVAL;
+       strcmp(device,f->unit?NP_SONY_SAVE_PARTITION:"hdd0:PP.FILE"))return -EINVAL;
     return connected()?0:-ENODEV;
 }
 static int execute_bridge_sync(iop_file_t *f,const char *name,int flags) {
@@ -345,7 +349,6 @@ static int bind_device(const char *expected_driver,unsigned expected_device) {
     if(!strcmp(root,save_root))bindings[1]=bindings[0];
     else {
         e=path(1,"/ps1emu/card0",target);if(e)return e;
-        size_t n=strlen(target)-5;memcpy(target+n,"owner.sha256",sizeof("owner.sha256"));
         e=bind_path(target,expected_save_driver,expected_save_device,&bindings[1]);if(e)return e;
     }
     removed=0;save_failed=0;return 0;
@@ -354,35 +357,32 @@ static int root_valid(const char *selected) {
     return strlen(selected)==6 && !strncmp(selected,"mass",4) && selected[4]>='0' && selected[4]<='9' && selected[5]==':';
 }
 int _start(int argc,char **argv) {
-    /* Legacy single-volume args or explicit endpoints plus volume IDs. */
-    if((argc!=4 && argc!=6 && argc!=11) || !root_valid(argv[1]) ||
-       strlen(argv[2])>=sizeof(disc) || strlen(argv[3])>=sizeof(key))return MODULE_NO_RESIDENT_END;
-    memcpy(root,argv[1],7);memcpy(disc,argv[2],strlen(argv[2])+1);memcpy(key,argv[3],strlen(argv[3])+1);
+    /* Only the frontend-selected shared pair contract is supported. */
+    if(argc!=12)return MODULE_NO_RESIDENT_END;
+    for(unsigned i=1;i<12;++i)if(!argv[i])return MODULE_NO_RESIDENT_END;
+    if(!root_valid(argv[1]) || !root_valid(argv[7]) || strlen(argv[2])>=sizeof(disc) ||
+       !np_file_card_path_valid(argv[3]) || !np_file_card_path_valid(argv[4]))return MODULE_NO_RESIDENT_END;
+    memcpy(root,argv[1],7);strcpy(disc,argv[2]);strcpy(cards[0],argv[3]);strcpy(cards[1],argv[4]);
     char test[NP_FILE_PATH_BYTES];
-    if(np_file_route(0,"/disc/disc0",disc,key,test,sizeof(test)) ||
-       np_file_route(1,"/ps1emu/card0",disc,key,test,sizeof(test)))return MODULE_NO_RESIDENT_END;
-    const char *expected_driver=argc==4?"ata":argv[4];
-    unsigned expected_device=0;
-    if(strcmp(expected_driver,"ata") && strcmp(expected_driver,"usb"))return MODULE_NO_RESIDENT_END;
-    if(argc>=6) {
-        if((argv[5][0]!='0' && argv[5][0]!='1') || argv[5][1])return MODULE_NO_RESIDENT_END;
-        expected_device=(unsigned)(argv[5][0]-'0');
-    }
+    if(np_file_route(0,"/disc/disc0",disc,cards,test,sizeof(test)) ||
+       np_file_route(1,"/ps1emu/card0",disc,cards,test,sizeof(test)) ||
+       np_file_route(1,"/ps1emu/card1",disc,cards,test,sizeof(test)))return MODULE_NO_RESIDENT_END;
+    const char *expected_driver=argv[5];
+    if((strcmp(expected_driver,"ata") && strcmp(expected_driver,"usb")) ||
+       (argv[6][0]!='0' && argv[6][0]!='1') || argv[6][1])return MODULE_NO_RESIDENT_END;
+    unsigned expected_device=(unsigned)(argv[6][0]-'0');
     if(!strcmp(expected_driver,"ata") && expected_device)return MODULE_NO_RESIDENT_END;
-    memcpy(save_root,root,sizeof(save_root));strcpy(expected_save_driver,expected_driver);expected_save_device=expected_device;
+    if((strcmp(argv[8],"ata") && strcmp(argv[8],"usb")) ||
+       (argv[9][0]!='0' && argv[9][0]!='1') || argv[9][1])return MODULE_NO_RESIDENT_END;
+    memcpy(save_root,argv[7],7);strcpy(expected_save_driver,argv[8]);expected_save_device=(unsigned)(argv[9][0]-'0');
+    if(!strcmp(expected_save_driver,"ata") && expected_save_device)return MODULE_NO_RESIDENT_END;
     memset(disc_volume,0,16);memset(save_volume,0,16);memset(bindings,0,sizeof(bindings));
-    if(argc==11) {
-        if(!root_valid(argv[6]) || (strcmp(argv[7],"ata") && strcmp(argv[7],"usb")) ||
-           (argv[8][0]!='0' && argv[8][0]!='1') || argv[8][1])return MODULE_NO_RESIDENT_END;
-        memcpy(save_root,argv[6],7);strcpy(expected_save_driver,argv[7]);expected_save_device=(unsigned)(argv[8][0]-'0');
-        if(!strcmp(expected_save_driver,"ata") && expected_save_device)return MODULE_NO_RESIDENT_END;
-        if(strcmp(argv[9],"-") || strcmp(argv[10],"-")) {
-            if(!np_file_volume_id_parse(argv[9],disc_volume) || !np_file_volume_id_parse(argv[10],save_volume))return MODULE_NO_RESIDENT_END;
-        }
-        int same=!strcmp(root,save_root);
-        if(same && (strcmp(expected_driver,expected_save_driver) || expected_device!=expected_save_device || memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
-        if(!same && (!np_file_volume_id_present(disc_volume) || !np_file_volume_id_present(save_volume) || !memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
+    if(strcmp(argv[10],"-") || strcmp(argv[11],"-")) {
+        if(!np_file_volume_id_parse(argv[10],disc_volume) || !np_file_volume_id_parse(argv[11],save_volume))return MODULE_NO_RESIDENT_END;
     }
+    int same=!strcmp(root,save_root);
+    if(same && (strcmp(expected_driver,expected_save_driver) || expected_device!=expected_save_device || memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
+    if(!same && (!np_file_volume_id_present(disc_volume) || !np_file_volume_id_present(save_volume) || !memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
     iop_sema_t sema={0};sema.initial=1;sema.max=1;lock=CreateSema(&sema);
     if(lock<0)return MODULE_NO_RESIDENT_END;
     if(np_file_worker_start()<0)return reject_start(0);
@@ -393,6 +393,6 @@ int _start(int argc,char **argv) {
         return reject_start(1);
     }
     bdm_RegisterCallback(storage_event);
-    printf("PSXCORE file-bridge=ready root=%s disc=%s saves-root=%s saves=%s native-ioman=1.4 flush-errors=limited\n",root,disc,save_root,key);
+    printf("PSXCORE file-bridge=ready root=%s disc=%s saves-root=%s card0=%s card1=%s native-ioman=1.4 flush-errors=limited\n",root,disc,save_root,cards[0],cards[1]);
     return MODULE_RESIDENT_END;
 }

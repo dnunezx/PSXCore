@@ -5,23 +5,23 @@
 #include <stdint.h>
 #include "psxcore_compat.h"
 #define NP_LAUNCH_MAGIC UINT32_C(0x324c504e)
-#define NP_LAUNCH_VERSION 2u
-#define NP_SAVE_ISOLATED 0u
-#define NP_SAVE_SHARED 1u
+#define NP_LAUNCH_VERSION 3u
+#define NP_SONY_SAVE_PARTITION "hdd0:__common"
 typedef struct {
     uint32_t magic;
     uint16_t version, size;
-    uint32_t runtime, environment, save_mode, reserved;
+    uint32_t runtime, environment, reserved[2];
     NpCompatOptions options;
-    char disc_partition[40], save_partition[40], save_key[33], serial[16];
+    char disc_partition[40], save_partition[40], serial[16];
     unsigned char disc_sha256[32], header_sha1[20];
-    unsigned char padding[3];
+    unsigned char padding[4];
 } NpLaunchRequest;
-_Static_assert(sizeof(NpLaunchRequest) == 224, "native launch layout changed");
-/* Initializes the fixed header; caller fills selected partitions/identity/hash.
- * Save partition must be hdd0:PP.PSXC.<save_key>, key = 1..20 ASCII alphanumerics,
- * '_' or '-'. The frontend persists ownership and explicitly shared identities.
- * Disc partition must contain the validated native /disc/disc0 image.
+_Static_assert(sizeof(NpLaunchRequest) == 192, "native launch layout changed");
+/* Sony's shared pair lives in hdd0:__common:/ps1emu/card0 and card1.
+ * Frontend manages existing cards. No private save ownership or migration.
+ * Full-disc hashes are optional precomputed compatibility hints, never needed
+ * for card selection. Native requests supply SHA-1 of the first 256 KiB for
+ * Sony's bounded boot check. File requests project their 2 KiB header instead.
  * Integer fields use little-endian encoding on PS2. */
 void np_launch_init(NpLaunchRequest *request);
 const char *np_launch_check(const void *bytes, size_t length, NpCompatResult *resolved);

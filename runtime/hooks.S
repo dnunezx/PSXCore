@@ -27,13 +27,6 @@ np_mount_hook:
     nop
     b np_hook_result
     nop
-/* Only the first, version-checked pfs1: mount call uses this entry point.
- * Resident storage survives low-memory runtime loading. No shared-card fallback. */
-    .globl np_save_mount_hook
-np_save_mount_hook:
-    la $a1,np_save_partition
-    b np_mount_hook
-    nop
     .globl np_disc_hook
 np_disc_hook:
     addiu $sp,$sp,-128
@@ -66,6 +59,40 @@ np_card_hook:
 40:
     addiu $sp,$sp,-128
     sq $ra,96($sp)
+    sq $a0,32($sp)
+    sq $a1,48($sp)
+    sq $a2,0($sp)
+    la $t0,np_native_request_enabled
+    lw $t0,0($t0)
+    beqz $t0,40f
+    nop
+    /* Frontend owns creation on both native HDD and file storage. Check both
+     * canonical names before Sony's initializer can enter its create branch.
+     * These are the checksum-pinned POPS file open/close interfaces. */
+    la $a0,existing_card0
+    li $a1,1
+    jal 0x00231358
+    move $a2,$zero
+    bltz $v0,np_native_stop
+    nop
+    jal 0x002315e0
+    move $a0,$v0
+    bltz $v0,np_native_stop
+    nop
+    la $a0,existing_card1
+    li $a1,1
+    jal 0x00231358
+    move $a2,$zero
+    bltz $v0,np_native_stop
+    nop
+    jal 0x002315e0
+    move $a0,$v0
+    bltz $v0,np_native_stop
+    nop
+40:
+    lq $a0,32($sp)
+    lq $a1,48($sp)
+    lq $a2,0($sp)
     li $t0,2
     sw $t0,112($sp)
     jal 0x0020cf00
@@ -1625,9 +1652,10 @@ np_asset_trace_enabled: .word 0
 np_native_request_enabled: .word 0
     .globl np_trace_enabled
 np_trace_enabled: .word 1
+existing_card0: .asciz "pfs1:/ps1emu/card0"
+existing_card1: .asciz "pfs1:/ps1emu/card1"
+    .balign 4
 np_save_ready: .word 0
-    .globl np_save_partition
-np_save_partition: .space 40
     .globl np_save_error_stage
 np_save_error_stage: .word 0
     .globl np_save_error_result

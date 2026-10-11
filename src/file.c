@@ -60,22 +60,6 @@ const char *np_file_endpoint_check(const NpFileEndpoint *e,int saves) {
     if((e->required&needed)!=needed)return "file-endpoint-capabilities";
     return NULL;
 }
-#ifndef NP_FILE_IO_ONLY
-static int zero(const void *bytes,size_t size) {
-    const unsigned char *p=bytes;
-    while(size--)if(*p++)return 0;
-    return 1;
-}
-#endif
-static int key_valid(const char *key) {
-    size_t n=strlen(key);
-    if(!n || n>32)return 0;
-    for(size_t i=0;i<n;++i) {
-        unsigned char c=key[i];
-        if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='_'||c=='-'))return 0;
-    }
-    return 1;
-}
 int np_file_path_valid(const char *p,size_t capacity,int directory) {
     if(!p || !capacity)return 0;
     size_t length=0;
@@ -92,19 +76,37 @@ int np_file_path_valid(const char *p,size_t capacity,int directory) {
     }
     return directory || np_vcd_filename(p);
 }
+static unsigned char lower(unsigned char c) {return c>='A' && c<='Z'?c+32:c;}
+static int same_path(const char *a,const char *b) {
+    while(*a && lower(*a)==lower(*b)){++a;++b;}
+    return lower(*a)==lower(*b);
+}
+int np_file_card_path_valid(const char *p) {
+    if(!np_file_path_valid(p,NP_FILE_PATH_BYTES,1))return 0;
+    if(strlen(p)>NP_FILE_PATH_BYTES-6)return 0; /* Reserve .prev/.bak suffixes. */
+    if(same_path(p,NP_FILE_CARD0) || same_path(p,NP_FILE_CARD1))return 1;
+    const char prefix[]="/POPS/CARDS/";
+    for(unsigned i=0;i<sizeof(prefix)-1;++i)if(lower(p[i])!=lower(prefix[i]))return 0;
+    size_t n=strlen(p);
+    return n>sizeof(prefix)+3 && same_path(p+n-4,".vmc");
+}
+int np_file_card_pair_valid(const char cards[2][NP_FILE_PATH_BYTES]) {
+    return cards && np_file_card_path_valid(cards[0]) && np_file_card_path_valid(cards[1]) && !same_path(cards[0],cards[1]);
+}
 #ifndef NP_FILE_IO_ONLY
 void np_file_launch_init(NpFileLaunchRequest *r) {
     if(!r)return;
     memset(r,0,sizeof(*r));r->magic=NP_FILE_MAGIC;r->version=NP_FILE_VERSION;r->size=sizeof(*r);
     r->runtime=NP_RUNTIME_KNOWN;r->environment=NP_ENV_PS2;r->options.diagnostics=1;
-    memcpy(r->driver,"ata",4);memcpy(r->runtime_root,"/POPS",6);
+    memcpy(r->runtime_root,"/POPS",6);
+    strcpy(r->cards[0],NP_FILE_CARD0);strcpy(r->cards[1],NP_FILE_CARD1);
+    r->disc=(NpFileEndpoint){NP_FILE_BACKEND_ATA,0,NP_FILE_DISC_CAPS,0};
+    r->saves=(NpFileEndpoint){NP_FILE_BACKEND_ATA,0,NP_FILE_SAVE_CAPS,0};
 }
 const char *np_file_launch_native(const NpFileLaunchRequest *f,NpLaunchRequest *r) {
     if(!f || !r)return "file-launch-output";
-    np_launch_init(r);r->runtime=f->runtime;r->environment=f->environment;r->save_mode=f->save_mode;r->options=f->options;
-    /* Only the bridge accepts these synthetic mount tokens. No APA operation. */
+    np_launch_init(r);r->runtime=f->runtime;r->environment=f->environment;r->options=f->options;
     memcpy(r->disc_partition,"hdd0:PP.FILE",12);
-    memcpy(r->save_partition,"hdd0:PP.PSXC.FILE",17);memcpy(r->save_key,"FILE",5);
     memcpy(r->serial,f->serial,sizeof(r->serial));
     memcpy(r->disc_sha256,f->disc_sha256,32);memcpy(r->header_sha1,f->header_sha1,20);
     return np_launch_check(r,sizeof(*r),NULL);
@@ -115,159 +117,46 @@ const char *np_file_launch_check(const void *bytes,size_t size,NpCompatResult *r
     if(!bytes || size!=sizeof(r))return "file-launch-size";
     memcpy(&r,bytes,sizeof(r));
     if(r.magic!=NP_FILE_MAGIC || r.version!=NP_FILE_VERSION || r.size!=sizeof(r))return "file-launch-version";
-    if(r.reserved || r.reserved_tail || !zero(r.padding,sizeof(r.padding)))return "file-launch-reserved";
-    if(r.save_mode!=NP_SAVE_ISOLATED)return "file-launch-shared-unimplemented";
-    /* Initial release supports a single internal ATA drive; expand explicitly. */
-    if(memcmp(r.driver,"ata",4) || r.device)return "file-launch-device";
-    if(!np_file_path_valid(r.disc_path,sizeof(r.disc_path),0) ||
-       !np_file_path_valid(r.runtime_root,sizeof(r.runtime_root),1))return "file-launch-path";
-    if(!memchr(r.save_key,0,sizeof(r.save_key)) || !key_valid(r.save_key))return "file-launch-save-key";
-    if(!memchr(r.serial,0,sizeof(r.serial)))return "file-launch-serial";
-    if(r.image_bytes>INT32_MAX || r.image_bytes<NP_VCD_DATA_OFFSET+NP_VCD_SECTOR_BYTES ||
-       (r.image_bytes-NP_VCD_DATA_OFFSET)%NP_VCD_SECTOR_BYTES)return "file-launch-image-size";
-    const char *error=np_file_launch_native(&r,&native);
-    return error?error:np_launch_check(&native,sizeof(native),resolved);
-}
-/* Copy common fields explicitly so wire layouts remain independent. */
-#define COPY_FILE_FIELDS(d,s) do { \
-    (d)->runtime=(s)->runtime;(d)->environment=(s)->environment; \
-    (d)->save_mode=(s)->save_mode;(d)->options=(s)->options; \
-    (d)->image_bytes=(s)->image_bytes; \
-    memcpy((d)->disc_path,(s)->disc_path,sizeof((d)->disc_path)); \
-    memcpy((d)->runtime_root,(s)->runtime_root,sizeof((d)->runtime_root)); \
-    memcpy((d)->save_key,(s)->save_key,sizeof((d)->save_key)); \
-    memcpy((d)->serial,(s)->serial,sizeof((d)->serial)); \
-    memcpy((d)->disc_sha256,(s)->disc_sha256,32); \
-    memcpy((d)->header_sha1,(s)->header_sha1,20); \
-} while(0)
-void np_file_launch_init_v4(NpFileLaunchRequestV4 *r) {
-    if(!r)return;
-    NpFileLaunchRequest old;np_file_launch_init(&old);
-    memset(r,0,sizeof(*r));COPY_FILE_FIELDS(r,&old);
-    r->magic=NP_FILE_MAGIC;r->version=NP_FILE_VERSION_4;r->size=sizeof(*r);
-    r->disc=(NpFileEndpoint){NP_FILE_BACKEND_ATA,0,NP_FILE_DISC_CAPS,0};
-    r->saves=(NpFileEndpoint){NP_FILE_BACKEND_ATA,0,NP_FILE_SAVE_CAPS,0};
-}
-static void project_v4(const NpFileLaunchRequestV4 *f,NpFileLaunchRequest *old) {
-    np_file_launch_init(old);COPY_FILE_FIELDS(old,f);
-}
-const char *np_file_launch_native_v4(const NpFileLaunchRequestV4 *f,NpLaunchRequest *r) {
-    if(!f || !r)return "file-launch-output";
-    NpFileLaunchRequest old;project_v4(f,&old);
-    return np_file_launch_native(&old,r);
-}
-const char *np_file_launch_check_v4(const void *bytes,size_t size,NpCompatResult *resolved) {
-    NpFileLaunchRequestV4 r;
-    if(resolved)memset(resolved,0,sizeof(*resolved));
-    if(!bytes || size!=sizeof(r))return "file-launch-size";
-    memcpy(&r,bytes,sizeof(r));
-    if(r.magic!=NP_FILE_MAGIC || r.version!=NP_FILE_VERSION_4 || r.size!=sizeof(r))return "file-launch-version";
-    if(r.reserved || r.reserved_tail || !zero(r.padding,sizeof(r.padding)))return "file-launch-reserved";
+    if(r.reserved)return "file-launch-reserved";
     const char *error=np_file_endpoint_check(&r.disc,0);
     if(!error)error=np_file_endpoint_check(&r.saves,1);
     if(error)return error;
-    NpFileLaunchRequest old;project_v4(&r,&old);
-    return np_file_launch_check(&old,sizeof(old),resolved);
-}
-const char *np_file_launch_decode(const void *bytes,size_t size,NpFileLaunchRequestV4 *out,NpCompatResult *resolved) {
-    if(resolved)memset(resolved,0,sizeof(*resolved));
-    if(!out)return "file-launch-output";
-    memset(out,0,sizeof(*out));
-    const char *error;
-    NpFileLaunchRequestV4 decoded;
-    if(size==sizeof(NpFileLaunchRequest)) {
-        error=np_file_launch_check(bytes,size,resolved);
-        if(error)return error;
-        NpFileLaunchRequest old;memcpy(&old,bytes,sizeof(old));
-        np_file_launch_init_v4(&decoded);COPY_FILE_FIELDS(&decoded,&old);
-    } else {
-        error=np_file_launch_check_v4(bytes,size,resolved);
-        if(error)return error;
-        memcpy(&decoded,bytes,sizeof(decoded));
-    }
-    *out=decoded;return NULL;
-}
-#undef COPY_FILE_FIELDS
-void np_file_launch_init_v5(NpFileLaunchRequestV5 *r) {
-    if(!r)return;
-    memset(r,0,sizeof(*r));np_file_launch_init_v4(&r->launch);
-    r->launch.version=NP_FILE_VERSION_5;r->launch.size=sizeof(*r);
-}
-const char *np_file_launch_check_v5(const void *bytes,size_t size,NpCompatResult *resolved) {
-    NpFileLaunchRequestV5 r;
-    if(resolved)memset(resolved,0,sizeof(*resolved));
-    if(!bytes || size!=sizeof(r))return "file-launch-size";
-    memcpy(&r,bytes,sizeof(r));
-    if(r.launch.version!=NP_FILE_VERSION_5 || r.launch.size!=sizeof(r))return "file-launch-version";
-    int shared=r.launch.save_mode==NP_SAVE_SHARED;
-    /* Shared ownership is defined only for volume-bound v5 requests. Keep
-     * legacy v3/v4 shared requests rejected by their original validators. */
-    if(shared)r.launch.save_mode=NP_SAVE_ISOLATED;
-    r.launch.version=NP_FILE_VERSION_4;r.launch.size=sizeof(r.launch);
-    const char *error=np_file_launch_check_v4(&r.launch,sizeof(r.launch),resolved);if(error)return error;
+    if(!np_file_path_valid(r.disc_path,sizeof(r.disc_path),0) ||
+       !np_file_path_valid(r.runtime_root,sizeof(r.runtime_root),1))return "file-launch-path";
+    if(!np_file_card_pair_valid(r.cards))return "file-launch-card-paths";
+    if(!memchr(r.serial,0,sizeof(r.serial)))return "file-launch-serial";
+    if(r.image_bytes>INT32_MAX || r.image_bytes<NP_VCD_DATA_OFFSET+NP_VCD_SECTOR_BYTES ||
+       (r.image_bytes-NP_VCD_DATA_OFFSET)%NP_VCD_SECTOR_BYTES)return "file-launch-image-size";
     int disc=np_file_volume_id_present(r.disc_volume),saves=np_file_volume_id_present(r.save_volume);
-    if(shared && (!disc || !saves)) {
-        if(resolved)memset(resolved,0,sizeof(*resolved));
-        return "file-shared-volume-required";
-    }
-    int endpoints_differ=r.launch.disc.backend!=r.launch.saves.backend || r.launch.disc.device!=r.launch.saves.device;
-    if(disc!=saves || (endpoints_differ && (!disc || !memcmp(r.disc_volume,r.save_volume,16)))) {
-        if(resolved)memset(resolved,0,sizeof(*resolved));
-        return "file-launch-volume-identities";
-    }
-    return NULL;
-}
-const char *np_file_launch_decode_v5(const void *bytes,size_t size,NpFileLaunchRequestV5 *out,NpCompatResult *resolved) {
-    if(resolved)memset(resolved,0,sizeof(*resolved));
-    if(!out)return "file-launch-output";
-    memset(out,0,sizeof(*out));const char *error;
-    if(size==sizeof(*out)) {
-        error=np_file_launch_check_v5(bytes,size,resolved);if(error)return error;
-        memcpy(out,bytes,size);
-    } else {
-        NpFileLaunchRequestV4 old;error=np_file_launch_decode(bytes,size,&old,resolved);if(error)return error;
-        if(old.disc.backend!=old.saves.backend || old.disc.device!=old.saves.device) {
-            if(resolved)memset(resolved,0,sizeof(*resolved));
-            return "file-launch-volume-identities";
-        }
-        out->launch=old;out->launch.version=NP_FILE_VERSION_5;out->launch.size=sizeof(*out);
-    }
-    return NULL;
+    int split=r.disc.backend!=r.saves.backend || r.disc.device!=r.saves.device;
+    if(disc!=saves || (split && (!disc || !memcmp(r.disc_volume,r.save_volume,16))))return "file-launch-volume-identities";
+    error=np_file_launch_native(&r,&native);
+    return error?error:np_launch_check(&native,sizeof(native),resolved);
 }
 #endif
-const char *np_file_route(unsigned unit,const char *name,const char *disc,const char *key,char *out,size_t capacity) {
+const char *np_file_route(unsigned unit,const char *name,const char *disc,const char cards[2][NP_FILE_PATH_BYTES],char *out,size_t capacity) {
     if(out&&capacity)out[0]=0;
-    if(!out || !capacity || !name || !disc || !key)return "file-route-input";
-    const char *suffix=NULL;
+    if(!out || !capacity || !name || !disc || !cards)return "file-route-input";
+    const char *selected;const char *suffix="";
     if(unit==0 && !strcmp(name,"/disc/disc0")) {
         if(!np_file_path_valid(disc,NP_FILE_PATH_BYTES,0))return "file-route-disc";
-        if(strlen(disc)>=capacity)return "file-route-size";
-        memcpy(out,disc,strlen(disc)+1);return NULL;
+        selected=disc;
+    } else {
+        if(unit!=1 || !np_file_card_pair_valid(cards))return "file-route-path";
+        if(!strcmp(name,"/ps1emu/card0"))selected=cards[0];
+        else if(!strcmp(name,"/ps1emu/card1"))selected=cards[1];
+        else if(!strcmp(name,"/ps1emu/card0.bak")){selected=cards[0];suffix=".bak";}
+        else if(!strcmp(name,"/ps1emu/card1.bak")){selected=cards[1];suffix=".bak";}
+        else return "file-route-path";
     }
-    if(unit!=1 || !key_valid(key))return "file-route-path";
-    if(!strcmp(name,"/ps1emu/card0"))suffix="card0";
-    else if(!strcmp(name,"/ps1emu/card1"))suffix="card1";
-    else if(!strcmp(name,"/ps1emu/card0.bak"))suffix="card0.bak";
-    else if(!strcmp(name,"/ps1emu/card1.bak"))suffix="card1.bak";
-    else return "file-route-path";
-    const char prefix[]="/POPS/SAVES/";
-    size_t k=strlen(key),s=strlen(suffix),n=sizeof(prefix)-1+k+1+s;
-    if(n>=capacity)return "file-route-size";
-    memcpy(out,prefix,sizeof(prefix)-1);memcpy(out+sizeof(prefix)-1,key,k);
-    out[sizeof(prefix)-1+k]='/';memcpy(out+sizeof(prefix)+k,suffix,s+1);
-    return NULL;
+    size_t n=strlen(selected),extra=strlen(suffix);
+    if(n+extra>=capacity)return "file-route-size";
+    memcpy(out,selected,n);memcpy(out+n,suffix,extra+1);return NULL;
 }
 int np_file_card_header_valid(const unsigned char *p,size_t size) {
     if(!p || size<128 || p[0]!='M' || p[1]!='C')return 0;
     unsigned char checksum=0;for(unsigned i=0;i<127;++i)checksum^=p[i];
     return checksum==p[127];
-}
-void np_file_card_frame(unsigned frame,unsigned char p[128]) {
-    memset(p,0,128);
-    if(frame==0 || frame==63){p[0]='M';p[1]='C';}
-    else if(frame>=1 && frame<=15){p[0]=0xa0;p[8]=p[9]=0xff;}
-    else if(frame>=16 && frame<=35){p[0]=p[1]=p[2]=p[3]=p[8]=p[9]=0xff;}
-    for(unsigned i=0;i<127;++i)p[127]^=p[i];
 }
 const char *np_file_read_span(uint64_t size,uint32_t lba,uint32_t count,uint32_t *offset,uint32_t *length,uint32_t *alignment) {
     if(!offset || !length || !alignment)return "file-read-output";

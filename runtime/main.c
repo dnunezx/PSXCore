@@ -401,8 +401,6 @@ extern uint32_t np_disc_probe_enabled;
 extern uint32_t np_firmware_license_enabled;
 extern uint32_t np_asset_trace_enabled;
 extern uint32_t np_native_request_enabled, np_trace_enabled;
-extern char np_save_partition[40];
-extern void np_save_mount_hook(void);
 extern void np_save_open_hook(void),np_save_write_hook(void),np_save_close_hook(void);
 extern void np_save_rename_hook(void),np_save_sync_hook(void),np_save_wait_hook(void);
 extern void np_save_sema_hook(void),np_save_thread_hook(void),np_save_start_hook(void);
@@ -528,12 +526,12 @@ static int install_video_progress_trace(const NpElf *elf) {
     return 0;
 }
 #endif
-static int install_hooks(const NpElf *elf,int game,int minimal,int assets,int native) {
+static int install_hooks(const NpElf *elf,int game,int minimal,int assets) {
     const uint32_t sites[24]={0x214968,0x2149a0,0x200790,0x2007b0,0x200828,0x200834,0x200868,0x200870,0x200888,0x2008a0,0x2008dc,0x200910,0x210068,0x2101b4,
         0x20e880,0x20eae4,0x20ea04,0x20eca4,0x20ef14,0x20f0e4,0x20ff14,0x20e9a8,0x20e550,0x21a918};
     const uint32_t targets[24]={0x233650,0x233650,0x210540,0x20cf00,0x22d2e0,0x22d480,0x22dc30,0x214418,0x20c750,0x200940,0x200d10,0x200d50,0x230330,0x230330,
         0x210368,0x210368,0x210290,0x210290,0x210290,0x210290,0x22e850,0x209e00,0x209e00,0x209e00};
-    const uintptr_t hooks[24]={native?(uintptr_t)np_save_mount_hook:(uintptr_t)np_mount_hook,(uintptr_t)np_mount_hook,(uintptr_t)np_disc_hook,(uintptr_t)np_card_hook,
+    const uintptr_t hooks[24]={(uintptr_t)np_mount_hook,(uintptr_t)np_mount_hook,(uintptr_t)np_disc_hook,(uintptr_t)np_card_hook,
         (uintptr_t)np_post_0,(uintptr_t)np_post_1,(uintptr_t)np_post_2,(uintptr_t)np_post_3,(uintptr_t)np_post_4,(uintptr_t)np_post_5,(uintptr_t)np_post_6,
         (uintptr_t)np_core_hook,(uintptr_t)np_sector_rpc_hook,(uintptr_t)np_sector_rpc_hook,
         (uintptr_t)(minimal&&!assets?np_sector_consumer_quiet:np_sector_consumer_hook),(uintptr_t)(minimal&&!assets?np_sector_consumer_quiet:np_sector_consumer_hook),(uintptr_t)np_sector_request_hook,(uintptr_t)np_sector_request_hook,
@@ -605,7 +603,7 @@ static int install_readback_repair(const NpElf *elf) {
 }
 /* Explicit validated-image experiments: replace stock verification jobs with
  * one SHA-1 check of our original header. Retain one job for worker signaling. */
-static int adapt_disc_checks(const NpElf *elf,int tekken,const unsigned char *selected_header) {
+static int adapt_disc_checks(const NpElf *elf,int tekken,const unsigned char *selected_header,int file_launch) {
     static const unsigned char header_sha1[20]={0xb2,0x9b,0xb8,0x80,0xc5,0x51,0x96,0xcd,0xd8,0xd4,0x5b,0x81,0xa3,0xea,0x29,0xf2,0x32,0x19,0x6a,0x18};
     static const unsigned char tekken_header_sha1[20]={0x5f,0xa2,0xa7,0x1e,0xc1,0xa0,0x08,0x2d,0xaf,0x4d,0x5a,0xcf,0x94,0x3d,0x13,0x11,0xbe,0xed,0x46,0x5b};
     for(unsigned i=0;i<elf->count;++i) {
@@ -613,8 +611,10 @@ static int adapt_disc_checks(const NpElf *elf,int tekken,const unsigned char *se
         if(s->address<=0x2fe670 && 0x2fe670+96<=s->address+s->filesz) {
             uint32_t *table=(void *)(NP_BOOT_STAGE+s->offset+0x2fe670-s->address);
             if(table[0]!=2400 || table[1]!=64 || table[3]!=1 || table[8]!=38 || table[9]!=0 || table[10]!=35)return -1;
-            /* Job offset/count use 512-byte sectors: count 512 is 256 KiB. */
+            /* Job offset/count use 512-byte sectors. Native prepared HDD
+             * requests use 256 KiB; direct files check just their 2 KiB header. */
             if(table[17]!=0 || table[18]!=512)return -1;
+            if(file_launch && queue_word(0x2fe670+72,table[18],NP_FILE_HEADER_HASH_BYTES/512))return -1;
             if(queue_word(0x2fe670+32,table[8],1) || queue_word(0x2fe670+36,table[9],0) ||
                 queue_word(0x2fe670+40,table[10],0) ||
                 np_patch_add(&patch_set,0x2fe670+76,(unsigned char *)table+76,
@@ -677,12 +677,11 @@ int main(int argc,char **argv) {
     SifInitRpc(0);init_scr();
     scr_printf("PSXCore experimental runtime bootstrap\n");
     if((unsigned)GetMemorySize()<NP_BOOT_STACK)goto rejected;
-    NpFileLaunchRequestV5 file_request;
+    NpFileLaunchRequest file_request;
     char mode[32]={0};size_t got;
     if(file_launch) {
         const char *error=np_file_prepare(argc,argv,&file_request);
         if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
-        if(np_file_management_only){trace("PSXCORE card-management=complete before-pops-transfer=yes\n");goto wait;}
         memcpy(mode,"launch\n",8);got=7;
     } else {
         FILE *config=fopen("host:/psxcore-runtime-mode.txt","rb");
@@ -697,8 +696,8 @@ int main(int argc,char **argv) {
     NpCompatResult resolved;
     if(native) {
         if(file_launch) {
-            const char *reason=np_file_launch_check_v5(&file_request,sizeof(file_request),&resolved);
-            if(!reason)reason=np_file_launch_native_v4(&file_request.launch,&request);
+            const char *reason=np_file_launch_check(&file_request,sizeof(file_request),&resolved);
+            if(!reason)reason=np_file_launch_native(&file_request,&request);
             if(reason){trace("PSXCORE rejected=%s\n",reason);goto rejected;}
         } else {
             FILE *f=fopen("host:/psxcore-launch.bin","rb");
@@ -710,18 +709,18 @@ int main(int argc,char **argv) {
                 trace("PSXCORE rejected=%s\n",reason?reason:"launch-file-size-or-io");goto rejected;
             }
         }
-        memcpy(np_save_partition,request.save_partition,sizeof(np_save_partition));
         np_native_request_enabled=1;
         np_trace_enabled=request.options.diagnostics;
         trace("PSXCORE launch=v%u profile=%s revision=%u fixes=%x environment=%u diagnostics=%u\n",
-            file_launch?3u:2u,resolved.profile,(unsigned)resolved.profile_revision,(unsigned)resolved.fixes,
+            file_launch?NP_FILE_VERSION:NP_LAUNCH_VERSION,resolved.profile,(unsigned)resolved.profile_revision,(unsigned)resolved.fixes,
             (unsigned)request.environment,(unsigned)request.options.diagnostics);
         trace("PSXCORE identity=%s game=%s disc-revision=%s\n",
             resolved.game_name?"matched":"unmatched",
             resolved.game_name?resolved.game_name:"unidentified",
             resolved.disc_revision?resolved.disc_revision:"unmatched");
-        trace("PSXCORE saves=%s key=%s mode=%s\n",file_launch?"/POPS/SAVES":request.save_partition,file_launch?file_request.launch.save_key:request.save_key,
-            request.save_mode==NP_SAVE_SHARED?"shared-explicit":"isolated");
+        trace("PSXCORE saves=sony-shared card0=%s card1=%s\n",
+            file_launch?file_request.cards[0]:"hdd0:__common:/ps1emu/card0",
+            file_launch?file_request.cards[1]:"hdd0:__common:/ps1emu/card1");
     }
     int tekken=!strcmp(mode,"hddlicensetekken\n");
     int hdd=mode[0]=='h',image=mode[0]!='s',probe=!strcmp(mode,"hdddisc\n");
@@ -755,7 +754,7 @@ int main(int argc,char **argv) {
     if(error || profile(&elf)) {
         trace("PSXCORE rejected=%s\n",error?error:"runtime-layout-profile");goto rejected;
     }
-    if(file_launch && np_file_storage_plan(file_request.launch.runtime,&patch_set)) {
+    if(file_launch && np_file_storage_plan(file_request.runtime,&patch_set)) {
         trace("PSXCORE rejected=file-storage-patch-plan\n");goto rejected;
     }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
@@ -852,7 +851,7 @@ int main(int argc,char **argv) {
 #endif
     }
 #endif
-    if(hooks && install_hooks(&elf,game,minimal,assets,native)) {
+    if(hooks && install_hooks(&elf,game,minimal,assets)) {
         trace("PSXCORE rejected=interface-patch-plan\n");goto rejected;
     }
     if(native && install_save_guards(&elf)) {
@@ -864,7 +863,7 @@ int main(int argc,char **argv) {
     if(repair && install_readback_repair(&elf)) {
         trace("PSXCORE rejected=readback-patch-plan\n");goto rejected;
     }
-    if(adapt && adapt_disc_checks(&elf,tekken,native?request.header_sha1:NULL)) {
+    if(adapt && adapt_disc_checks(&elf,tekken,native?request.header_sha1:NULL,file_launch)) {
         trace("PSXCORE rejected=disc-check-patch-plan\n");goto rejected;
     }
     if(license && adapt_firmware_license(&elf)) {
@@ -950,7 +949,7 @@ int main(int argc,char **argv) {
     SifFreeIopHeap(allocation);
     if(file_launch) {
         if(np_file_storage_init_pops()){trace("PSXCORE rejected=file-storage-post-reset\n");goto failed;}
-        error=np_file_reopen(&file_request,0);
+        error=np_file_reopen(&file_request);
         if(!error)error=np_file_bridge_start(&file_request);
         if(error){trace("PSXCORE rejected=%s\n",error);goto failed;}
         trace("PSXCORE file-storage=ready native-hdd-modules=skipped disc-reader=original\n");

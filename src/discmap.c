@@ -16,14 +16,11 @@ static int entry_valid(const NpDiscMapEntry *e) {
         if(!((c>='A' && c<='Z') || (c>='a' && c<='z') || (c>='0' && c<='9') ||
             c=='.' || c=='_' || c=='-'))return 0;
     }
-    if(!memchr(e->save_key,0,sizeof(e->save_key)) || !memchr(e->serial,0,sizeof(e->serial)))return 0;
-    NpLaunchRequest r;np_launch_init(&r);r.environment=NP_ENV_PS2;r.save_mode=e->save_mode;
+    if(!memchr(e->serial,0,sizeof(e->serial)))return 0;
+    NpLaunchRequest r;np_launch_init(&r);r.environment=NP_ENV_PS2;
     memcpy(r.disc_partition,e->partition,sizeof(r.disc_partition));
-    memcpy(r.save_key,e->save_key,sizeof(r.save_key));memcpy(r.serial,e->serial,sizeof(r.serial));
+    memcpy(r.serial,e->serial,sizeof(r.serial));
     memcpy(r.disc_sha256,e->sha256,32);r.header_sha1[0]=1;
-    if(strlen(e->save_key)>20)return 0;
-    memcpy(r.save_partition,"hdd0:PP.PSXC.",13);
-    memcpy(r.save_partition+13,e->save_key,strlen(e->save_key)+1);
     return np_launch_check(&r,sizeof(r),NULL)==NULL;
 }
 static const char *map_check(const NpDiscMap *map) {
@@ -33,9 +30,6 @@ static const char *map_check(const NpDiscMap *map) {
         for(unsigned j=0;j<i;++j) {
             if(!memcmp(map->entries[i].sha256,map->entries[j].sha256,32))return "disc-map-duplicate-image";
             if(!strcmp(map->entries[i].partition,map->entries[j].partition))return "disc-map-duplicate-partition";
-            if(!strcmp(map->entries[i].save_key,map->entries[j].save_key) &&
-                (map->entries[i].save_mode!=NP_SAVE_SHARED || map->entries[j].save_mode!=NP_SAVE_SHARED))
-                return "disc-map-save-ownership";
         }
     }
     return NULL;
@@ -55,7 +49,7 @@ const char *np_disc_map_parse(const void *bytes,size_t size,NpDiscMap *out) {
         if(end==size)return "disc-map-newline";
         size_t n=end-start;if(n && p[start+n-1]=='\r')--n;
         if(!line++) {
-            static const char header[]="PSXCORE-DISCMAP 1";
+            static const char header[]="PSXCORE-DISCMAP 2";
             if(n!=sizeof(header)-1 || memcmp(p+start,header,n))return "disc-map-version";
         }else {
             if(map.count==NP_DISC_MAP_LIMIT)return "disc-map-count";
@@ -67,19 +61,16 @@ const char *np_disc_map_parse(const void *bytes,size_t size,NpDiscMap *out) {
                 e->sha256[i]=(unsigned char)((a<<4)|b);
             }
             char fields[160];memcpy(fields,p+start+65,n-65);fields[n-65]=0;
-            char *tokens[4];tokens[0]=fields;
-            for(unsigned i=1;i<4;++i) {
+            char *tokens[2];tokens[0]=fields;
+            for(unsigned i=1;i<2;++i) {
                 char *space=strchr(tokens[i-1],' ');
                 if(!space || space==tokens[i-1])return "disc-map-line";
                 *space=0;tokens[i]=space+1;
             }
-            if(!tokens[3][0] || strchr(tokens[3],' ') || strlen(tokens[0])>=sizeof(e->partition) ||
-                strlen(tokens[1])>=sizeof(e->save_key) || strlen(tokens[3])>=sizeof(e->serial))return "disc-map-line";
-            strcpy(e->partition,tokens[0]);strcpy(e->save_key,tokens[1]);
-            if(!strcmp(tokens[2],"isolated"))e->save_mode=NP_SAVE_ISOLATED;
-            else if(!strcmp(tokens[2],"shared"))e->save_mode=NP_SAVE_SHARED;
-            else return "disc-map-save-mode";
-            if(strcmp(tokens[3],"-"))strcpy(e->serial,tokens[3]);
+            if(!tokens[1][0] || strchr(tokens[1],' ') || strlen(tokens[0])>=sizeof(e->partition) ||
+                strlen(tokens[1])>=sizeof(e->serial))return "disc-map-line";
+            strcpy(e->partition,tokens[0]);
+            if(strcmp(tokens[1],"-"))strcpy(e->serial,tokens[1]);
         }
         start=end+1;
     }
@@ -109,13 +100,11 @@ const char *np_disc_map_launch(const NpDiscMapEntry *entry,const NpDiscIdentity 
     if(out)memset(out,0,sizeof(*out));
     if(!out || !entry_valid(entry) || !identity || identity->bytes<262144)return "disc-map-identity";
     if(memcmp(entry->sha256,identity->sha256,32))return "disc-map-selection-changed";
-    NpLaunchRequest r;np_launch_init(&r);r.environment=environment;r.save_mode=entry->save_mode;
+    NpLaunchRequest r;np_launch_init(&r);r.environment=environment;
     if(options)r.options=*options;
     memcpy(r.disc_partition,entry->partition,sizeof(r.disc_partition));
-    memcpy(r.save_key,entry->save_key,sizeof(r.save_key));memcpy(r.serial,entry->serial,sizeof(r.serial));
+    memcpy(r.serial,entry->serial,sizeof(r.serial));
     memcpy(r.disc_sha256,identity->sha256,32);memcpy(r.header_sha1,identity->header_sha1,20);
-    memcpy(r.save_partition,"hdd0:PP.PSXC.",13);
-    memcpy(r.save_partition+13,entry->save_key,strlen(entry->save_key)+1);
     const char *error=np_launch_check(&r,sizeof(r),NULL);if(error)return error;
     *out=r;return NULL;
 }
