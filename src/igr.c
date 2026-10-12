@@ -90,3 +90,45 @@ uint32_t np_igr_input_update(NpIgrInput *state,uint16_t buttons,
     }
     return result;
 }
+
+void np_igr_pause_init(NpIgrPause *state) {
+    if(state)memset(state,0,sizeof(*state));
+}
+uint32_t np_igr_pause_request(NpIgrPause *state,uint32_t now_ms,uint32_t timeout_ms) {
+    if(!state || state->pending || state->held || state->sequence==UINT32_MAX ||
+       !timeout_ms || timeout_ms>NP_IGR_PAUSE_MAX_MS)return 0;
+    ++state->sequence;
+    state->ticket=state->sequence;
+    state->pending=1;
+    state->held=0;
+    state->started_ms=now_ms;
+    state->timeout_ms=timeout_ms;
+    return state->ticket;
+}
+int np_igr_pause_cancel(NpIgrPause *state,uint32_t ticket) {
+    if(!state || !ticket || !state->pending || ticket!=state->ticket)return 0;
+    state->pending=0;
+    return 1;
+}
+uint32_t np_igr_pause_poll(NpIgrPause *state,uint32_t ticket,uint32_t now_ms,
+    int boundary_verified,int card_command_idle) {
+    if(!state || !ticket || ticket!=state->ticket)return NP_IGR_PAUSE_IGNORE;
+    if(!state->pending) {
+        state->held=0;
+        return NP_IGR_PAUSE_RUN;
+    }
+    if((uint32_t)(now_ms-state->started_ms)>=state->timeout_ms) {
+        np_igr_pause_cancel(state,ticket);
+        state->held=0;
+        return NP_IGR_PAUSE_RUN;
+    }
+    if(boundary_verified!=1 || card_command_idle!=1) {
+        if(state->held) {
+            np_igr_pause_cancel(state,ticket);
+            state->held=0;
+        }
+        return NP_IGR_PAUSE_RUN;
+    }
+    state->held=1;
+    return NP_IGR_PAUSE_HOLD;
+}

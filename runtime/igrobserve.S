@@ -1,5 +1,5 @@
 /* Opt-in telemetry only. All calls and their results retain the native ABI.
- * No syscalls beyond the original memcpy/iSignalSema and no blocking observer.
+ * Original native calls only unless the separate one-shot NP_IGR_PROBE is set.
  * Observer state uses the uncached alias and independent publication counters. */
 #if NP_IGR_OBSERVE
     .section ._psxcore_igr_observe,"ax",@progbits
@@ -169,11 +169,101 @@ np_igr_alarm_observe:
     lq $ra,48($sp)
     jr $ra
     addiu $sp,$sp,96
+    /* Native serial handler is selected in v0 by POPS. Forward its untouched
+     * arguments/delay-slot effects, then retain the full native return words. */
+    .globl np_igr_serial_observe
+np_igr_serial_observe:
+    addiu $sp,$sp,-96
+    sw $a0,32($sp)
+    sw $a1,36($sp)
+    sw $a2,40($sp)
+    sw $v0,44($sp)
+    sq $ra,48($sp)
+    jalr $v0
+    nop
+    sq $v0,64($sp)
+    sq $v1,80($sp)
+    la $t0,np_igr_boundary_observation
+    lui $t1,0x2000
+    or $t0,$t0,$t1
+    OBS_BEGIN 8
+    lw $t1,12($t0)
+    addiu $t1,$t1,1
+    sw $t1,12($t0)
+    lw $t1,44($sp)
+    sw $t1,16($t0)
+    lw $t1,32($sp)
+    sw $t1,20($t0)
+    lw $t1,36($sp)
+    sw $t1,24($t0)
+    lw $t1,40($sp)
+    sw $t1,28($t0)
+    sw $v0,32($t0)
+    OBS_END 8
+    lq $v0,64($sp)
+    lq $v1,80($sp)
+    lq $ra,48($sp)
+    jr $ra
+    addiu $sp,$sp,96
+
+    .globl np_igr_event_observe
+np_igr_event_observe:
+    addiu $sp,$sp,-96
+    sq $ra,48($sp)
+    jal 0x200e98
+    nop
+    sq $v0,64($sp)
+    sq $v1,80($sp)
+    la $t0,np_igr_boundary_observation
+    lui $t1,0x2000
+    or $t0,$t0,$t1
+    OBS_BEGIN 40
+    lw $t1,44($t0)
+    addiu $t1,$t1,1
+    sw $t1,44($t0)
+    li $t2,0x506d90
+    lw $t1,20($t2)
+    sw $t1,48($t0)
+    lw $t1,24($t2)
+    sw $t1,52($t0)
+    lw $t1,8($t2)
+    sw $t1,56($t0)
+    lw $t1,4($t2)
+    sw $t1,60($t0)
+    lw $t1,-32496($gp)
+    sw $t1,64($t0)
+    lw $t1,-30672($gp)
+    sw $t1,68($t0)
+    lw $t1,-30680($gp)
+    sw $t1,72($t0)
+    lw $t1,-30612($gp)
+    sw $t1,76($t0)
+    li $t2,0x507920
+    lw $t1,0($t2)
+    sw $t1,80($t0)
+    li $t2,0x527930
+    lw $t1,0($t2)
+    sw $t1,84($t0)
+    OBS_END 40
+#if NP_IGR_PROBE
+    /* One diagnostic yield after dispatch, never a pause acknowledgement. */
+    jal np_igr_probe_once
+    nop
+#endif
+    lq $v0,64($sp)
+    lq $v1,80($sp)
+    lq $ra,48($sp)
+    jr $ra
+    addiu $sp,$sp,96
     .balign 16
     .globl np_igr_observation
 np_igr_observation:
     .word 0x4f47504e,1
     .space 104
+    .globl np_igr_boundary_observation
+np_igr_boundary_observation:
+    .word 0x4247504e,1
+    .space 88
     .globl np_igr_observe_end
 np_igr_observe_end:
 #endif

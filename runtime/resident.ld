@@ -16,12 +16,18 @@ ASSERT(. <= 0x000f7800, "runtime return-load helpers overflow")
 ASSERT(. <= 0x000f7900, "runtime GTE color helper overflow")
 .interlace_scanout 0x000f7900: {
  KEEP(*(._psxcore_interlace_scanout))
+ KEEP(*(._psxcore_igr_probe_stack))
 } :resident
 ASSERT(. <= 0x000f8000, "runtime interlace scanout helpers overflow")
 .resident 0x000f8000: {
  KEEP(*(._psxcore_transfer))
  *libkernel.a:*(.text .text.* .rodata .rodata.* .data .data.*)
  KEEP(*(._psxcore_igr_observe))
+ KEEP(*(._psxcore_igr_wait))
+ KEEP(*(._psxcore_igr_quit))
+ KEEP(*(._psxcore_cd_observe))
+ KEEP(*(._psxcore_cd_rendezvous))
+ KEEP(*(._psxcore_cd_protocol.text))
 } :resident
 ASSERT(. <= 0x000ff000, "runtime transfer resident overflow")
 .code_guard 0x000ff000: {

@@ -1,5 +1,5 @@
 /* Preserve a code address, never an import stub or a mutable export slot.
- * Load only after the verified POPS IOP reset and before SDK IOMANX.
+ * Load only after the verified POPS IOP reset, before the private SDK manager.
  * No guest libraries or firmware bytes are changed by this module. */
 #ifdef NP_HOST_TEST
 #include "nativegate_stub.h"

@@ -5,8 +5,44 @@
 #include "psxcore_runtime.h"
 #include "psxcore_file_patch.h"
 #include "file_storage.h"
+#include "startup_diag.h"
 #include "config.h"
 #include "saveguards.h"
+#ifndef NP_IGR_WAIT
+#define NP_IGR_WAIT 0
+#endif
+#if NP_IGR_WAIT != 0 && NP_IGR_WAIT != 1
+#error "NP_IGR_WAIT must be 0 or 1"
+#endif
+#if NP_IGR_WAIT
+#include "igrwait.h"
+#endif
+#ifndef NP_CD_OBSERVE
+#define NP_CD_OBSERVE 0
+#endif
+#ifndef NP_CD_RENDEZVOUS
+#define NP_CD_RENDEZVOUS 0
+#endif
+#if NP_CD_RENDEZVOUS != 0 && NP_CD_RENDEZVOUS != 1
+#error "NP_CD_RENDEZVOUS must be 0 or 1"
+#endif
+#if NP_CD_RENDEZVOUS && !NP_CD_OBSERVE
+#error "NP_CD_RENDEZVOUS requires the independent CD worker observations"
+#endif
+#if NP_CD_RENDEZVOUS
+#include "cdrendezvous.h"
+#endif
+#if NP_CD_OBSERVE != 0 && NP_CD_OBSERVE != 1
+#error "NP_CD_OBSERVE must be 0 or 1"
+#endif
+#if NP_CD_OBSERVE
+#include "cdobserve.h"
+extern void np_cd_read_rpc(void),np_cd_prefetch_rpc(void),np_cd_prefetch_callback(void);
+extern void np_cd_response_retire(void),np_cd_getstat_retire(void),np_cd_deferred_callback(void);
+extern void np_cd_ack_irq(void),np_cd_worker_read(void);
+extern char np_cd_observe_begin[],np_cd_observe_end[];
+extern NpCdObservation np_cd_observation;
+#endif
 #ifndef NP_IGR_OBSERVE
 #define NP_IGR_OBSERVE 0
 #endif
@@ -16,10 +52,54 @@
 #if NP_IGR_OBSERVE
 #include "igrobserve.h"
 extern void np_igr_pad_copy_observe(void),np_igr_alarm_observe(void);
+extern void np_igr_serial_observe(void),np_igr_event_observe(void);
+extern NpIgrBoundaryObservation np_igr_boundary_observation;
 extern char np_igr_observe_begin[],np_igr_observe_end[];
 extern NpIgrObservation np_igr_observation;
 #endif
 #include <kernel.h>
+#ifndef NP_IGR_PROBE
+#define NP_IGR_PROBE 0
+#endif
+#if NP_IGR_PROBE != 0 && NP_IGR_PROBE != 1
+#error "NP_IGR_PROBE must be 0 or 1"
+#endif
+#if NP_IGR_PROBE && (!NP_IGR_WAIT || !NP_IGR_OBSERVE || NP_CD_OBSERVE)
+#error "IGR probe requires WAIT/IGR observations and excludes CD observations"
+#endif
+#ifndef NP_IGR_QUIT_PROBE
+#define NP_IGR_QUIT_PROBE 0
+#endif
+#if NP_IGR_QUIT_PROBE != 0 && NP_IGR_QUIT_PROBE != 1
+#error "NP_IGR_QUIT_PROBE must be 0 or 1"
+#endif
+#if NP_IGR_QUIT_PROBE && (!NP_IGR_OBSERVE || NP_IGR_PROBE)
+#error "IGR quit probe requires observations and excludes the custom wait probe"
+#endif
+#if NP_IGR_QUIT_PROBE
+#include "igrquit.h"
+extern void np_igr_quit_probe(void);
+extern char np_igr_quit_begin[],np_igr_quit_end[];
+extern NpIgrQuitObservation np_igr_quit_observation;
+#endif
+#ifndef NP_IGR_RETURN
+#define NP_IGR_RETURN 0
+#endif
+#if NP_IGR_RETURN != 0 && NP_IGR_RETURN != 1
+#error "NP_IGR_RETURN must be 0 or 1"
+#endif
+#if NP_IGR_RETURN && (NP_IGR_QUIT_PROBE || NP_IGR_PROBE)
+#error "Native IGR return excludes quit deferral and custom wait probes"
+#endif
+#if NP_IGR_RETURN
+#include "psxcore_igr.h"
+#include "igrreturn.h"
+#include "igrloader_symbols.h"
+extern unsigned char np_igr_loader_blob[];
+extern unsigned int size_np_igr_loader_blob;
+_Static_assert(NP_IGR_LOADER_ENTRY==0x84000,"IGR loader entry");
+_Static_assert(NP_IGR_LOADER_END<=0xe7000,"IGR loader private stack overlap");
+#endif
 #include <sifrpc.h>
 #include <iopcontrol.h>
 #include <iopcontrol_special.h>
@@ -645,6 +725,11 @@ static void trace(const char *format,...) {
     int n=vsnprintf(text,sizeof(text),format,args);va_end(args);
     if(n<0)return;
     if(n>=(int)sizeof(text))n=(int)sizeof(text)-1;
+    if(!strncmp(text,"PSXCORE rejected=",17)) {
+        char *end=strchr(text,'\n');if(end)*end=0;
+        np_startup_error(text+17);
+        if(end)*end='\n';
+    }
     for(int i=0;i<n;++i)*R_EE_SIO_TXFIFO=(unsigned char)text[i];
 }
 static const unsigned char elf_hash[32]={
@@ -674,9 +759,10 @@ static int profile(const NpElf *elf) {
 }
 int main(int argc,char **argv) {
     int file_launch=argc>1;
-    SifInitRpc(0);init_scr();
-    scr_printf("PSXCore experimental runtime bootstrap\n");
-    if((unsigned)GetMemorySize()<NP_BOOT_STACK)goto rejected;
+    SifInitRpc(0);np_startup_init();
+    np_startup_begin(1,"Initialize EE/RPC services");np_startup_done();
+    np_startup_begin(2,"Parse launch arguments and request");
+    if((unsigned)GetMemorySize()<NP_BOOT_STACK){np_startup_error("ee-memory-size");goto rejected;}
     NpFileLaunchRequest file_request;
     char mode[32]={0};size_t got;
     if(file_launch) {
@@ -685,7 +771,7 @@ int main(int argc,char **argv) {
         memcpy(mode,"launch\n",8);got=7;
     } else {
         FILE *config=fopen("host:/psxcore-runtime-mode.txt","rb");
-        if(!config)goto rejected;
+        if(!config){np_startup_error("missing-launch-request: no arguments; HostFS mode unavailable");goto rejected;}
         got=fread(mode,1,sizeof(mode)-1,config);int extra=fgetc(config),bad_read=ferror(config),closed=fclose(config);
         if(closed || bad_read || extra!=EOF || !np_runtime_mode_valid(mode,got)) {
             trace("PSXCORE rejected=runtime-mode\n");goto rejected;
@@ -742,14 +828,17 @@ int main(int argc,char **argv) {
      * independently of game profiles and optional fix selections. */
     if(native)repair=1;
 #endif
+    np_startup_begin(7,"Read and verify POPS.ELF");
     if(file_launch?np_file_read_asset(&file_request,"POPS.ELF",(void *)NP_BOOT_STAGE,3166988,elf_hash):
         read_known("host:/POPS.ELF",(void *)NP_BOOT_STAGE,3166988,elf_hash)) {
         trace("PSXCORE rejected=runtime-file-identity\n");goto rejected;
     }
+    np_startup_done();np_startup_begin(8,"Read and verify IOPRP252.IMG");
     if(file_launch?np_file_read_asset(&file_request,"IOPRP252.IMG",(void *)NP_BOOT_IOP,265233,img_hash):
         read_known("host:/IOPRP252.IMG",(void *)NP_BOOT_IOP,265233,img_hash)) {
         trace("PSXCORE rejected=iop-file-identity\n");goto rejected;
     }
+    np_startup_done();np_startup_begin(9,"Validate POPS layout and checked adapters");
     NpElf elf;const char *error=np_boot_elf_check((void *)NP_BOOT_STAGE,3166988,&elf);
     if(error || profile(&elf)) {
         trace("PSXCORE rejected=%s\n",error?error:"runtime-layout-profile");goto rejected;
@@ -890,15 +979,85 @@ int main(int argc,char **argv) {
     }
 #endif
 #if NP_IGR_OBSERVE
-    /* Plan last so no later adapter can alter checked observation context. */
+    /* Plan after regular adapters; optional observers reject context overlap. */
     if(native) {
-        const uintptr_t targets[2]={(uintptr_t)np_igr_pad_copy_observe,(uintptr_t)np_igr_alarm_observe};
+        const uintptr_t targets[4]={(uintptr_t)np_igr_pad_copy_observe,(uintptr_t)np_igr_alarm_observe,
+            (uintptr_t)np_igr_serial_observe,(uintptr_t)np_igr_event_observe};
         error=np_runtime_igr_observe_plan((void *)NP_BOOT_STAGE,3166988,&elf,
             (uintptr_t)np_igr_observe_begin,(uintptr_t)np_igr_observe_end,targets,&patch_set);
         if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
-        trace("PSXCORE igr-observe=1 state=%08x bytes=%u input=unchanged saves=native return=disabled\n",
-            (unsigned)(uintptr_t)&np_igr_observation,(unsigned)sizeof(np_igr_observation));
+        trace("PSXCORE igr-observe=1 state=%08x bytes=%u input=unchanged saves=native return=%s\n",
+            (unsigned)(uintptr_t)&np_igr_observation,(unsigned)sizeof(np_igr_observation),
+            NP_IGR_RETURN?"native-menu":"disabled");
+        trace("PSXCORE igr-boundary-observe=1 state=%08x bytes=%u pause=unproven return=%s\n",
+            (unsigned)(uintptr_t)&np_igr_boundary_observation,(unsigned)sizeof(np_igr_boundary_observation),
+            NP_IGR_RETURN?"native-menu":"disabled");
     }
+#endif
+#if NP_IGR_QUIT_PROBE
+    if(!native){error="igr-quit-native";goto rejected;}
+    error=np_runtime_igr_quit_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+        (uintptr_t)np_igr_quit_begin,(uintptr_t)np_igr_quit_end,
+        (uintptr_t)np_igr_quit_probe,&patch_set);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    trace("PSXCORE igr-quit=probe state=%08x bytes=%u native-quit=deferred pause=unproven return=disabled\n",
+        (unsigned)(uintptr_t)&np_igr_quit_observation,(unsigned)sizeof(np_igr_quit_observation));
+#endif
+#if NP_CD_OBSERVE
+    if(native) {
+        const uintptr_t targets[8]={(uintptr_t)np_cd_read_rpc,(uintptr_t)np_cd_prefetch_rpc,
+            (uintptr_t)np_cd_prefetch_callback,(uintptr_t)np_cd_response_retire,
+            (uintptr_t)np_cd_getstat_retire,(uintptr_t)np_cd_deferred_callback,
+            (uintptr_t)np_cd_ack_irq,(uintptr_t)np_cd_worker_read};
+        error=np_runtime_cd_observe_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            (uintptr_t)np_cd_observe_begin,(uintptr_t)np_cd_observe_end,targets,&patch_set);
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        trace("PSXCORE cd-observe=1 state=%08x bytes=%u barrier=unproven swap=disabled\n",
+            (unsigned)(uintptr_t)&np_cd_observation,(unsigned)sizeof(np_cd_observation));
+    }
+#endif
+#if NP_CD_RENDEZVOUS
+    if(native) {
+        error=np_runtime_cd_rendezvous_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            (uintptr_t)np_cd_rendezvous_begin,(uintptr_t)np_cd_rendezvous_end,
+            (uintptr_t)np_cd_rendezvous_tail,&patch_set);
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        trace("PSXCORE cd-rendezvous=1 state=%08x bytes=%u gate=absent swap=disabled\n",
+            (unsigned)(uintptr_t)&np_cd_rendezvous_observation,
+            (unsigned)sizeof(np_cd_rendezvous_observation));
+    }
+#endif
+#if NP_IGR_WAIT
+    if(!native){error="igr-wait-native";goto rejected;}
+    error=np_runtime_igr_wait_check((void *)NP_BOOT_STAGE,3166988,&elf,
+        (uintptr_t)np_igr_wait_begin,(uintptr_t)np_igr_wait_end,&patch_set);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+#if NP_IGR_PROBE
+    error=np_runtime_igr_probe_stack_check((uintptr_t)np_igr_probe_stack,
+        (uintptr_t)np_igr_probe_stack_end);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    const uintptr_t completion_hooks[2]={(uintptr_t)np_igr_probe_rpc_complete,
+        (uintptr_t)np_igr_probe_file_complete};
+    error=np_runtime_igr_completion_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+        (uintptr_t)np_igr_wait_begin,(uintptr_t)np_igr_wait_end,completion_hooks,&patch_set);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    trace("PSXCORE igr-wait=probe-one-shot state=%08x bytes=%u delay=256 units=native pause=unavailable return=disabled\n",
+        (unsigned)(uintptr_t)&np_igr_probe_observation,(unsigned)sizeof(np_igr_probe_observation));
+#else
+    trace("PSXCORE igr-wait=available calls=none pause=unavailable return=disabled\n");
+#endif
+#endif
+#if NP_IGR_RETURN
+    if(!native){error="igr-return-native";goto rejected;}
+    if(!size_np_igr_loader_blob || size_np_igr_loader_blob>NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY ||
+       NP_IGR_LOADER_STATUS<NP_IGR_LOADER_ENTRY || NP_IGR_LOADER_STATUS+24>NP_IGR_LOADER_END) {
+        error="igr-return-loader-layout";goto rejected;
+    }
+    error=np_runtime_igr_return_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+        NP_IGR_LOADER_ENTRY,NP_IGR_LOADER_END,&patch_set);
+    if(error)goto rejected;
+    trace("PSXCORE igr-return=experimental trigger=native-menu saves=user-owned status=%08x bytes=24\n",
+        NP_IGR_LOADER_STATUS);
 #endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
@@ -928,39 +1087,70 @@ int main(int argc,char **argv) {
     if(repair)trace("PSXCORE compatibility=native-readback-descriptor restore-before-start=yes file=unmodified\n");
     fflush(stdout);
     if(image) {
-        if(file_launch)np_file_storage_exit();
+        np_startup_done();np_startup_begin(10,"Reset IOP using verified POPS image");
+        if(file_launch){np_startup_operation("Close storage service before POPS reset");np_file_storage_exit();np_startup_done();}
+        np_startup_operation("Reset IOP using verified POPS image");
         trace("PSXCORE iop=image-reset-begin\n");
         int reset=SifIopRebootBuffer((void *)NP_BOOT_IOP,265233);
         trace("PSXCORE iop=image-reset-submitted result=%d\n",reset);
-        if(reset!=1)goto failed;
+        if(reset!=1){np_startup_context("SifIopRebootBuffer result=%d",reset);np_startup_error("pops-iop-reset-submit");goto failed;}
+        np_startup_done();np_startup_operation("Synchronize POPS IOP reset");
         unsigned i;for(i=0;i<300 && !SifIopSync();++i)usleep(10000);
-        if(i==300)goto failed;
+        if(i==300){np_startup_error("pops-iop-reset-sync-timeout");goto failed;}
+        np_startup_done();np_startup_operation("Reinitialize RPC after POPS reset");
         SifInitRpc(0);
+        np_startup_done();np_startup_operation("Enable module loading after POPS reset");
         trace("PSXCORE iop=image-synchronized\n");
         int patched=sbv_patch_enable_lmb();
         trace("PSXCORE iop=lmb-patch result=%d\n",patched);
-        if(patched<0)goto failed;
+        if(patched<0){np_startup_context("sbv_patch_enable_lmb result=%d",patched);np_startup_error("pops-lmb-patch");goto failed;}
+        np_startup_done();
     }
     trace("PSXCORE iop=service-probe-begin\n");
-    int load=SifLoadFileInit(),heap=SifInitIopHeap();
+    np_startup_operation("Initialize POPS loadfile service");
+    int load=SifLoadFileInit();
+    np_startup_context("SifLoadFileInit result=%d",load);
+    if(load<0){np_startup_error("pops-loadfile-init");goto failed;}
+    np_startup_done();np_startup_operation("Initialize POPS IOP heap service");
+    int heap=SifInitIopHeap();
+    np_startup_context("SifInitIopHeap result=%d",heap);
+    if(heap<0){np_startup_error("pops-iop-heap-init");goto failed;}
+    np_startup_done();np_startup_operation("Probe POPS IOP heap allocation");
     void *allocation=heap>=0?SifAllocIopHeap(64):NULL;
     trace("PSXCORE iop=services loadfile=%d heap=%d allocation=%s\n",load,heap,allocation?"passed":"FAILED");
-    if(load<0 || heap<0 || !allocation)goto failed;
+    if(!allocation){np_startup_error("pops-iop-heap-allocation");goto failed;}
     SifFreeIopHeap(allocation);
+    np_startup_done();
     if(file_launch) {
+        np_startup_begin(11,"Reload selected storage after POPS reset");
         if(np_file_storage_init_pops()){trace("PSXCORE rejected=file-storage-post-reset\n");goto failed;}
+        trace("PSXCORE file-storage=reopen-begin\n");
+        np_startup_operation("Rediscover VCD/save volumes and recheck cards");
         error=np_file_reopen(&file_request);
-        if(!error)error=np_file_bridge_start(&file_request);
+        if(!error){
+            np_startup_done();np_startup_begin(12,"Start file bridge and check save readiness");
+            trace("PSXCORE file-storage=reopen-complete bridge-begin\n");
+            error=np_file_bridge_start(&file_request);
+        }
         if(error){trace("PSXCORE rejected=%s\n",error);goto failed;}
         trace("PSXCORE file-storage=ready native-hdd-modules=skipped disc-reader=original\n");
     }
+#if NP_IGR_RETURN
+    /* Install only after the complete POPS plan and storage preparation pass.
+     * This disjoint low region survives every validated POPS PT_LOAD range. */
+    memcpy((void *)NP_IGR_LOADER_ENTRY,np_igr_loader_blob,size_np_igr_loader_blob);
+    memset((void *)(NP_IGR_LOADER_ENTRY+size_np_igr_loader_blob),0,
+        NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY-size_np_igr_loader_blob);
+#endif
     trace("PSXCORE runtime=transfer entry=00200008 argc=1 source=external-file-unmodified\n");
+    np_startup_done();np_startup_begin(13,"Transfer to POPS attempted; game boot unconfirmed");
     fflush(stdout);TerminateLibrary();np_runtime_transfer(plan);
 rejected:
     trace(file_launch?"PSXCORE runtime=rejected before-pops-transfer=yes\n":"PSXCORE runtime=rejected before-iop-change=yes\n");goto wait;
 failed:
     trace("PSXCORE runtime=preparation-failed\n");
 wait:
+    np_startup_stop("runtime-preparation-failed");
     for(;;)nopdelay();
     return 0;
 }

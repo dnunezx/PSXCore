@@ -28,3 +28,9 @@ POPS_IOX.PAK
 /fixtures/
 /captures/
 /logs/
+/runtime/igrloader/linkfile
+/runtime/igrloader/igrloader.map
+/runtime/igrloader/igrloader.nm
+/runtime/igrloader/igrloader_symbols.h
+/runtime/igrloader/igrloader_config.h
+/runtime/igrloader/igrloader_config.tmp

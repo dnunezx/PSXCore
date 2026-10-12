@@ -1,5 +1,6 @@
 /* Original standalone ATA/USB FAT32/exFAT backend. Frontend-independent. */
 #include "file_storage.h"
+#include "startup_diag.h"
 #include "psxcore_hash.h"
 #include "psxcore_boot.h"
 #include <limits.h>
@@ -15,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ee_regs.h>
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 #include <io_common.h>
@@ -23,58 +25,123 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+
+/* Startup diagnostics must survive the POPS IOP reset. stdio may still use
+ * the discarded FILEIO server before the replacement modules are ready. */
+static void storage_trace(const char *format,...) {
+    va_list args;va_start(args,format);
+#ifdef NP_HOST_TEST
+    vprintf(format,args);
+#else
+    char text[256];
+    int n=vsnprintf(text,sizeof(text),format,args);
+    if(n>=(int)sizeof(text))n=(int)sizeof(text)-1;
+    for(int i=0;i<n;++i)*R_EE_SIO_TXFIFO=(unsigned char)text[i];
+#endif
+    va_end(args);
+}
 
 #define MODULE(name) extern unsigned char name##_irx[];extern unsigned int size_##name##_irx
 MODULE(iomanX);MODULE(fileXio);MODULE(ps2dev9);MODULE(bdm);MODULE(bdmfs_fatfs);
 MODULE(ata_bd);MODULE(usbd);MODULE(usbmass_bd);MODULE(psxcore_nativegate);MODULE(psxcore_filebridge);
+MODULE(poweroff);
+MODULE(psxcore_iomanx);
+MODULE(bdma_usb_fs);MODULE(bdma_usb_bd);MODULE(bdma_ata_fs);MODULE(bdma_ata_bd);MODULE(psxcore_massproxy);
 static char mounted[8],save_mounted[8];
 static uint32_t selected_backend=NP_FILE_BACKEND_ATA;
 /* Zero inherits the game backend, preserving initial/post-reset defaults. */
 static uint32_t selected_save_backend;
+static int native_storage;
 int np_file_probe_only;
+/* The POPSLoader ATA transport reports its BDM name as "mass". The
+ * bootstrap SDK ATA transport reports "ata"; keep the two sessions apart. */
+static const char *storage_driver(uint32_t backend) {
+    return native_storage && backend==NP_FILE_BACKEND_ATA?"mass":np_file_backend_driver(backend);
+}
 static int load(const char *name,const unsigned char *bytes,unsigned size,const char *args,unsigned length) {
     int result=-1;
+    char operation[96];snprintf(operation,sizeof(operation),"Load IOP module: %s",name);
+    np_startup_operation(operation);
+    storage_trace("PSXCORE file-module=%s phase=begin\n",name);
     int id=SifExecModuleBuffer((void *)bytes,size,length,args,&result);
-    printf("PSXCORE file-module=%s id=%d result=%d\n",name,id,result);
+    storage_trace("PSXCORE file-module=%s id=%d result=%d\n",name,id,result);
+    np_startup_context("Module %s: ID=%d result=%d",name,id,result);
+    if(id<0 || result!=0)np_startup_error("storage-module-load");else np_startup_done();
     return id<0 || result!=0?-1:0;
 }
 #define LOAD(name) do { if(load(#name,name##_irx,size_##name##_irx,NULL,0))return -1; } while(0)
+static int storage_init(int reset,int pops);
 int np_file_storage_init_pops(void) {
     /* Called only after the final, verified POPS IOP reset. The initial
      * storage environment is discarded and must not supply this pointer. */
     LOAD(psxcore_nativegate);
-    return np_file_storage_init(0);
+    return storage_init(0,1);
 }
 int np_file_storage_init(int reset) {
+    return storage_init(reset,0);
+}
+static int storage_init(int reset,int pops) {
+    native_storage=pops;
     uint32_t save_backend=selected_save_backend?selected_save_backend:selected_backend;
     if((selected_backend!=NP_FILE_BACKEND_ATA && selected_backend!=NP_FILE_BACKEND_USB) ||
        (save_backend!=NP_FILE_BACKEND_ATA && save_backend!=NP_FILE_BACKEND_USB))return -1;
     if(reset) {
         unsigned i;
+        np_startup_begin(3,"Submit initial IOP reset");
         for(i=0;i<300 && !SifIopReset("",0);++i)usleep(10000);
-        if(i==300)return -1;
+        if(i==300){np_startup_error("storage-iop-reset-submit-timeout");return -1;}
+        np_startup_done();np_startup_operation("Synchronize initial IOP reset");
         for(i=0;i<300 && !SifIopSync();++i)usleep(10000);
-        if(i==300)return -1;
+        if(i==300){np_startup_error("storage-iop-reset-sync-timeout");return -1;}
+        np_startup_done();np_startup_operation("Reinitialize RPC after initial reset");
         SifInitRpc(0);
+        np_startup_done();
     }
     if(reset) {
+        np_startup_begin(4,"Enable initial IOP module loading");
         int patched=sbv_patch_enable_lmb();
-        printf("PSXCORE file-storage=lmb-patch result=%d\n",patched);
-        if(patched<0)return -1;
+        storage_trace("PSXCORE file-storage=lmb-patch result=%d\n",patched);
+        np_startup_context("sbv_patch_enable_lmb result=%d",patched);
+        if(patched<0){np_startup_error("storage-lmb-patch");return -1;}
+        np_startup_done();
     }
-    LOAD(iomanX);LOAD(fileXio);LOAD(bdm);LOAD(bdmfs_fatfs);
-    if(selected_backend==NP_FILE_BACKEND_ATA || save_backend==NP_FILE_BACKEND_ATA){LOAD(ps2dev9);LOAD(ata_bd);}
-    if(selected_backend==NP_FILE_BACKEND_USB || save_backend==NP_FILE_BACKEND_USB){LOAD(usbd);LOAD(usbmass_bd);}
-    if(fileXioInit()<0)return -1;
+    if(pops) {
+        /* The POPS image reset discards the launcher's power-button module.
+         * Install its CDVD interrupt chain before native storage is exposed. */
+        LOAD(poweroff);
+        /* Unchanged POPSLoader BDMA pairs: native mass registration first,
+         * backend second. Never apply the SDK legacy-IOMAN takeover here. */
+        if(selected_backend!=save_backend) {
+            np_startup_error("native-storage-mixed-backend-unimplemented");return -1;
+        }
+        if(selected_backend==NP_FILE_BACKEND_USB){LOAD(bdma_usb_fs);LOAD(bdma_usb_bd);}
+        else {LOAD(bdma_ata_fs);LOAD(bdma_ata_bd);}
+        LOAD(psxcore_iomanx);LOAD(psxcore_massproxy);LOAD(fileXio);
+    } else {
+        LOAD(iomanX);LOAD(fileXio);LOAD(bdm);LOAD(bdmfs_fatfs);
+        if(selected_backend==NP_FILE_BACKEND_ATA || save_backend==NP_FILE_BACKEND_ATA){LOAD(ps2dev9);LOAD(ata_bd);}
+        if(selected_backend==NP_FILE_BACKEND_USB || save_backend==NP_FILE_BACKEND_USB){LOAD(usbd);LOAD(usbmass_bd);}
+    }
+    storage_trace("PSXCORE file-storage=filexio-init-begin\n");
+    if(reset)np_startup_begin(5,"Initialize fileXio storage service");
+    else np_startup_operation("Initialize fileXio after POPS reset");
+    int initialized=fileXioInit();
+    storage_trace("PSXCORE file-storage=filexio-init result=%d\n",initialized);
+    np_startup_context("fileXioInit result=%d",initialized);
+    if(initialized<0){np_startup_error("storage-filexio-init");return -1;}
+    np_startup_done();np_startup_operation("Discover mounted storage volumes");
     for(unsigned i=0;i<50;++i) {
         for(unsigned unit=0;unit<10;++unit) {
             char root[9];snprintf(root,sizeof(root),"mass%u:/",unit);
             int fd=fileXioDopen(root);
-            if(fd>=0){int e=fileXioDclose(fd);return e<0?-1:0;}
+            if(fd>=0){int e=fileXioDclose(fd);storage_trace("PSXCORE file-storage=mounted unit=%u close=%d\n",unit,e);
+                np_startup_context("Mounted mass%u: close=%d",unit,e);
+                if(e<0)np_startup_error("storage-volume-close");else np_startup_done();return e<0?-1:0;}
         }
         usleep(100000);
     }
-    return -1;
+    np_startup_error("storage-volume-discovery-timeout");return -1;
 }
 void np_file_storage_exit(void){fileXioExit();}
 static int join(char *out,size_t size,const char *root,const char *relative) {
@@ -161,9 +228,18 @@ static void serial(int fd,uint64_t bytes,char out[16]) {
 }
 /* Fixed-size header and bounded ISO metadata only. No full-image hash or
  * per-game metadata sidecar is required before or after the IOP reset. */
+static char inspect_context[137];
 static const char *inspect(const char *path,NpFileLaunchRequest *r,int initial) {
     iox_stat_t before,after;unsigned char head[NP_FILE_HEADER_HASH_BYTES];
-    if(fileXioGetStat(path,&before)<0 || !FIO_S_ISREG(before.mode))return "file-image-stat";
+    memset(&before,0,sizeof(before));
+    snprintf(inspect_context,sizeof(inspect_context),"%.68s",path);
+    np_startup_context("%.68s",path);
+    int status=fileXioGetStat(path,&before);
+    if(status<0 || !FIO_S_ISREG(before.mode)) {
+        snprintf(inspect_context,sizeof(inspect_context),"%.68s\nGetStat=%d mode=%08x",path,status,(unsigned)before.mode);
+        np_startup_context("%s",inspect_context);
+        return status<0?"file-image-stat":"file-image-not-regular";
+    }
     uint64_t bytes=((uint64_t)before.hisize<<32)|before.size;
     if(bytes>INT32_MAX)return "file-image-size";
     if(!initial && bytes!=r->image_bytes)return "file-image-changed";
@@ -174,7 +250,7 @@ static const char *inspect(const char *path,NpFileLaunchRequest *r,int initial) 
     char driver[8]={0};uint32_t device=UINT32_MAX;
     if(!error && (fileXioIoctl2(fd,USBMASS_IOCTL_GET_DRIVERNAME,NULL,0,driver,sizeof(driver))<0 ||
         fileXioIoctl2(fd,USBMASS_IOCTL_GET_DEVICE_NUMBER,NULL,0,&device,sizeof(device))<0 ||
-        !memchr(driver,0,sizeof(driver)) || strcmp(driver,np_file_backend_driver(r->disc.backend)) ||
+        !memchr(driver,0,sizeof(driver)) || strcmp(driver,storage_driver(r->disc.backend)) ||
         device!=r->disc.device))error="file-image-device";
     char actual_serial[16]={0};unsigned char actual_header[20];
     if(!error) {
@@ -203,7 +279,7 @@ static int root_valid(const char *root) {
 }
 /* The pinned SDK supports these two metadata ioctls on directory handles:
  * FIL and DIR start with FFOBJID, and only obj.fs->pdrv is consulted. */
-static const char *root_check(const char *root,const NpFileEndpoint *endpoint) {
+static const char *root_metadata(const char *root,NpFileEndpoint *endpoint) {
     if(!root_valid(root))return "file-volume-root";
     char path[9],driver[8]={0};uint32_t device=UINT32_MAX;
     snprintf(path,sizeof(path),"%s/",root);
@@ -211,9 +287,17 @@ static const char *root_check(const char *root,const NpFileEndpoint *endpoint) {
     int e=fileXioIoctl2(fd,USBMASS_IOCTL_GET_DRIVERNAME,NULL,0,driver,sizeof(driver));
     if(e>=0)e=fileXioIoctl2(fd,USBMASS_IOCTL_GET_DEVICE_NUMBER,NULL,0,&device,sizeof(device));
     int closed=fileXioDclose(fd);
+    np_startup_context("%s: driver=%.7s device=%u; wanted %s device=%u",root,driver,
+        (unsigned)device,storage_driver(endpoint->backend),(unsigned)endpoint->device);
     if(e<0 || closed<0 || !memchr(driver,0,sizeof(driver)) ||
-       strcmp(driver,np_file_backend_driver(endpoint->backend)) || device!=endpoint->device)return "file-volume-device";
+       strcmp(driver,storage_driver(endpoint->backend)) || device>1)return "file-volume-device";
+    endpoint->device=device;
     return NULL;
+}
+static const char *root_check(const char *root,const NpFileEndpoint *endpoint) {
+    NpFileEndpoint actual=*endpoint;
+    const char *error=root_metadata(root,&actual);
+    return error?error:actual.device!=endpoint->device?"file-volume-device":NULL;
 }
 static const char *volume_read(const char *root,unsigned char id[16]) {
     char path[64];iox_stat_t st;NpFileVolumeMarker marker;unsigned char extra;
@@ -238,6 +322,60 @@ static const char *volume_check(const char *root,unsigned char id[16]) {
     }
     if(np_file_volume_id_present(id) && memcmp(id,actual,16))return "file-volume-id-mismatch";
     memcpy(id,actual,16);return NULL;
+}
+/* massN belongs to the frontend's previous IOP session. Resolve the initial
+ * read by the explicit endpoint and optional volume ID before inspecting it.
+ * Never use a different physical device merely because the filename exists. */
+static const char *select_initial_once(NpFileLaunchRequest *r,char selected[NP_FILE_PATH_BYTES+8]) {
+    unsigned matches=0,endpoints=0;
+    NpFileLaunchRequest chosen;
+    char chosen_path[NP_FILE_PATH_BYTES+8]={0};
+    const char *failure=NULL;char failure_context[137]={0};
+    for(unsigned i=0;i<10;++i) {
+        char root[8],path[NP_FILE_PATH_BYTES+8];
+        snprintf(root,sizeof(root),"mass%u:",i);
+        if(root_check(root,&r->disc))continue;
+        ++endpoints;
+        NpFileLaunchRequest candidate=*r;
+        /* A supplied ID disambiguates partitions before touching their VCDs. */
+        if(np_file_volume_id_present(r->disc_volume)) {
+            const char *error=volume_check(root,candidate.disc_volume);
+            if(error){failure=error;snprintf(failure_context,sizeof(failure_context),"Volume %s did not match selected ID",root);continue;}
+        }
+        if(join(path,sizeof(path),root,r->disc_path))return "file-image-path";
+        const char *error=inspect(path,&candidate,1);
+        if(error) {
+            /* Preserve a substantive failure over another absent filename. */
+            if(!failure || !strcmp(failure,"file-image-stat")) {
+                failure=error;
+                memcpy(failure_context,inspect_context,sizeof(failure_context));
+            }
+            continue;
+        }
+        error=volume_check(root,candidate.disc_volume);
+        if(error)return error;
+        if(++matches>1)return "file-image-volume-ambiguous";
+        chosen=candidate;memcpy(chosen_path,path,strlen(path)+1);
+    }
+    if(matches!=1) {
+        if(!endpoints)return "file-image-endpoint-not-found";
+        if(failure_context[0])np_startup_context("%s",failure_context);
+        return failure?failure:"file-image-not-found-or-changed";
+    }
+    *r=chosen;memcpy(selected,chosen_path,strlen(chosen_path)+1);
+    np_startup_context("%.68s\nResolved after storage reset",selected);
+    return NULL;
+}
+static const char *select_initial(NpFileLaunchRequest *r,char selected[NP_FILE_PATH_BYTES+8]) {
+    const char *error=NULL;
+    for(unsigned attempt=0;attempt<50;++attempt) {
+        error=select_initial_once(r,selected);
+        if(!error || (strcmp(error,"file-image-endpoint-not-found") && strcmp(error,"file-image-stat")))return error;
+        /* Discovery of any mass volume does not mean the selected one is ready.
+         * This bounds retries only; synchronous filesystem calls may block. */
+        if(attempt+1<50)usleep(100000);
+    }
+    return error;
 }
 static const char *cards(const NpFileLaunchRequest *r) {
     if(np_file_probe_only)return NULL;
@@ -275,7 +413,8 @@ static const char *save_discover(const NpFileLaunchRequest *r) {
     unsigned matches=0;
     for(unsigned i=0;i<10;++i) {
         char root[8];unsigned char id[16];snprintf(root,sizeof(root),"mass%u:",i);
-        if(root_check(root,&r->saves) || volume_read(root,id) || memcmp(id,r->save_volume,16))continue;
+        if(root_check(root,&r->saves) ||
+           volume_read(root,id) || memcmp(id,r->save_volume,16))continue;
         if(++matches>1){save_mounted[0]=0;return "file-save-volume-ambiguous";}
         memcpy(save_mounted,root,sizeof(save_mounted));
     }
@@ -309,14 +448,61 @@ static const char *locate(NpFileLaunchRequest *r,const char *checked_path) {
     }
     error=save_discover(r);
     if(error){mounted[0]=save_mounted[0]=0;return error;}
-    printf("PSXCORE file-image=header-checked full-scan=no root=%s saves-root=%s bytes=%u serial=%s volume-id=%s\n",mounted,save_mounted,
+    storage_trace("PSXCORE file-image=header-checked full-scan=no root=%s saves-root=%s bytes=%u serial=%s volume-id=%s\n",mounted,save_mounted,
         (unsigned)f->image_bytes,f->serial[0]?f->serial:"unidentified",np_file_volume_id_present(r->disc_volume)?"verified":"unbound");
     return NULL;
 }
+/* POPStarter selects a VCD path in the newly initialized native mass stack.
+ * Recheck the existing measured VCD identity, not the old USB location.
+ * Exactly one match is required; saves keep their path/marker constraints. */
+static const char *reopen_once(NpFileLaunchRequest *r) {
+    NpFileLaunchRequest chosen;unsigned matches=0;char checked[NP_FILE_PATH_BYTES+8]={0};
+    const char *failure="file-image-not-found-or-changed";
+    for(unsigned unit=0;unit<10;++unit) {
+        char root[8],path[NP_FILE_PATH_BYTES+8];snprintf(root,sizeof(root),"mass%u:",unit);
+        NpFileLaunchRequest candidate=*r;
+        if(root_metadata(root,&candidate.disc))continue;
+        if(volume_check(root,candidate.disc_volume))continue;
+        if(join(path,sizeof(path),root,r->disc_path))return "file-image-path";
+        const char *error=inspect(path,&candidate,0);
+        if(error){if(strcmp(error,"file-image-stat"))failure=error;continue;}
+        if(++matches>1)return "file-image-volume-ambiguous";
+        if(r->disc.backend==r->saves.backend && r->disc.device==r->saves.device &&
+           !memcmp(r->disc_volume,r->save_volume,16))candidate.saves.device=candidate.disc.device;
+        chosen=candidate;strcpy(checked,path);
+    }
+    if(matches!=1)return failure;
+    if(np_file_volume_id_present(r->save_volume) &&
+       memcmp(r->disc_volume,r->save_volume,16)) {
+        unsigned saves=0;
+        for(unsigned unit=0;unit<10;++unit) {
+            char root[8];unsigned char id[16];snprintf(root,sizeof(root),"mass%u:",unit);
+            NpFileEndpoint endpoint=chosen.saves;
+            if(root_metadata(root,&endpoint) || volume_read(root,id) || memcmp(id,r->save_volume,16))continue;
+            if(++saves>1)return "file-save-volume-ambiguous";
+            chosen.saves=endpoint;
+        }
+        if(saves!=1)return "file-save-volume-not-found-or-changed";
+    }
+    const char *error=locate(&chosen,checked);
+    if(!error)error=cards(&chosen);
+    if(!error)*r=chosen;
+    return error;
+}
 const char *np_file_reopen(NpFileLaunchRequest *r) {
-    const char *error=locate(r,NULL);
-    if(!error)error=cards(r);
+    np_startup_operation("Open selected VCD through native mass storage");
+    mounted[0]=save_mounted[0]=0;const char *error=NULL;
+    for(unsigned attempt=0;attempt<50;++attempt) {
+        error=reopen_once(r);
+        if(!error || strcmp(error,"file-image-not-found-or-changed"))break;
+        if(attempt+1<50)usleep(100000);
+    }
     if(error)mounted[0]=save_mounted[0]=0;
+    else {
+        char path[NP_FILE_PATH_BYTES+8];snprintf(path,sizeof(path),"%s%s",mounted,r->disc_path);
+        np_startup_selection(np_file_backend_driver(r->disc.backend),r->disc.device,
+            np_file_backend_driver(r->saves.backend),r->saves.device,r->environment,path);
+    }
     return error;
 }
 static uint32_t backend_number(const char *name) {
@@ -330,6 +516,7 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
     np_file_probe_only=0;mounted[0]=save_mounted[0]=0;
     np_file_launch_init(r);selected_backend=NP_FILE_BACKEND_ATA;selected_save_backend=0;
     const char *selected=NULL,*request_path=NULL,*save_root=NULL;
+    char resolved_selected[NP_FILE_PATH_BYTES+8];
     int overrides=0,backend_seen=0,device_seen=0,save_backend_seen=0,save_device_seen=0;
     int disc_id_seen=0,save_id_seen=0,card_seen[2]={0};
     for(int i=1;i<argc;++i) {
@@ -364,30 +551,48 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
     if((!selected && !request_path) || (request_path && overrides))return "file-launch-arguments";
     if(!np_file_card_pair_valid(r->cards))return "file-launch-card-paths";
     if(np_file_endpoint_check(&r->disc,0) || np_file_endpoint_check(&r->saves,1))return "file-endpoint-device";
+    np_startup_selection(np_file_backend_driver(r->disc.backend),r->disc.device,
+        np_file_backend_driver(r->saves.backend),r->saves.device,r->environment,selected?selected:request_path);
+    np_startup_done();
     if(np_file_storage_init(1))return "file-storage-init";
+    np_startup_begin(6,"Locate VCD, validate identity and memory cards");
     if(request_path) {
         int fd=fileXioOpen(request_path,FIO_O_RDONLY,0);if(fd<0)return "file-request-open";
         unsigned char extra;int e=read_all(fd,r,sizeof(*r));
         if(!e && fileXioRead(fd,&extra,1)!=0)e=-1;
         int closed=fileXioClose(fd);if(e || closed<0)return "file-request-read";
         const char *error=np_file_launch_check(r,sizeof(*r),NULL);if(error)return error;
+        np_startup_selection(np_file_backend_driver(r->disc.backend),r->disc.device,
+            np_file_backend_driver(r->saves.backend),r->saves.device,r->environment,r->disc_path);
     } else {
         if(strlen(selected)<8 || strncmp(selected,"mass",4) || selected[4]<'0' || selected[4]>'9' || selected[5]!=':' ||
            strlen(selected+6)>=sizeof(r->disc_path) || !np_file_path_valid(selected+6,sizeof(r->disc_path),0))return "file-image-path";
         memcpy(r->disc_path,selected+6,strlen(selected+6)+1);
-        const char *error=inspect(selected,r,1);if(error)return error;
+        np_startup_operation("Resolve selected VCD after storage reset");
+        np_startup_context("%s",selected);
+        const char *error=select_initial(r,resolved_selected);if(error)return error;
+        selected=resolved_selected;
+        np_startup_selection(np_file_backend_driver(r->disc.backend),r->disc.device,
+            np_file_backend_driver(r->saves.backend),r->saves.device,r->environment,selected);
+        np_startup_done();np_startup_operation("Validate disc and save volume identities");
         char disc_root[8]={0};memcpy(disc_root,selected,6);
         error=volume_check(disc_root,r->disc_volume);if(error)return error;
         if(save_root) {
-            error=root_check(save_root,&r->saves);if(error)return error;
             if(!np_file_volume_id_present(r->disc_volume))return "file-launch-volume-identities";
-            error=volume_check(save_root,r->save_volume);if(error)return error;
+            /* Explicit marker IDs survive remounts; save_discover below resolves
+             * that volume rather than trusting the old --save-volume hint. */
+            if(!np_file_volume_id_present(r->save_volume)) {
+                error=root_check(save_root,&r->saves);if(error)return error;
+                error=volume_check(save_root,r->save_volume);if(error)return error;
+            }
             if(!np_file_volume_id_present(r->save_volume))return "file-launch-volume-identities";
         } else if(!save_id_seen)memcpy(r->save_volume,r->disc_volume,16);
     }
+    np_startup_done();np_startup_operation("Resolve selected storage volumes");
     const char *error=locate(r,selected);
-    if(!error)error=cards(r);
+    if(!error){np_startup_done();np_startup_operation("Check selected memory cards");error=cards(r);}
     if(error)mounted[0]=save_mounted[0]=0;
+    else np_startup_done();
     return error;
 }
 const char *np_file_runtime_path(const NpFileLaunchRequest *r,const char *name,char *out,size_t size) {
@@ -395,11 +600,34 @@ const char *np_file_runtime_path(const NpFileLaunchRequest *r,const char *name,c
     return !mounted[0] || n<0 || (size_t)n>=size?"file-runtime-path":NULL;
 }
 int np_file_read_asset(const NpFileLaunchRequest *r,const char *name,void *target,unsigned bytes,const unsigned char expected[32]) {
-    char path[160];iox_stat_t st;
-    if(np_file_runtime_path(r,name,path,sizeof(path)) || fileXioGetStat(path,&st)<0 || st.hisize || st.size!=bytes)return -1;
-    int fd=fileXioOpen(path,FIO_O_RDONLY,0);if(fd<0)return -1;
-    int e=read_all(fd,target,bytes);int closed=fileXioClose(fd);if(e || closed<0)return -1;
-    unsigned char hash[32];np_boot_sha256(target,bytes,hash);return memcmp(hash,expected,32)?-1:0;
+    char path[160],operation[96];iox_stat_t st;
+    if(np_file_runtime_path(r,name,path,sizeof(path))){np_startup_error("asset-path");return -1;}
+    snprintf(operation,sizeof(operation),"Check asset size: %s",name);np_startup_operation(operation);
+    np_startup_context("%s",path);
+    int status=fileXioGetStat(path,&st);
+    if(status<0){np_startup_context("%s stat=%d",path,status);np_startup_error("asset-stat");return -1;}
+    if(st.hisize || st.size!=bytes){np_startup_context("%s size=%u:%u expected=%u",name,(unsigned)st.hisize,(unsigned)st.size,bytes);np_startup_error("asset-size");return -1;}
+    np_startup_done();snprintf(operation,sizeof(operation),"Open asset: %s",name);np_startup_operation(operation);
+    int fd=fileXioOpen(path,FIO_O_RDONLY,0);
+    if(fd<0){np_startup_context("%s open=%d",path,fd);np_startup_error("asset-open");return -1;}
+    np_startup_done();snprintf(operation,sizeof(operation),"Read asset: %s",name);np_startup_operation(operation);
+    unsigned done=0;int result=0;
+    while(done<bytes) {
+        unsigned chunk=bytes-done;if(chunk>65536)chunk=65536;
+        np_startup_context("%s read=%u/%u",name,done,bytes);
+        result=fileXioRead(fd,(unsigned char *)target+done,chunk);
+        if(result<=0 || (unsigned)result>chunk)break;
+        done+=(unsigned)result;
+    }
+    if(done!=bytes){np_startup_context("%s read=%u/%u result=%d",name,done,bytes,result);np_startup_error("asset-read");}
+    else {np_startup_done();snprintf(operation,sizeof(operation),"Close asset: %s",name);np_startup_operation(operation);}
+    int closed=fileXioClose(fd);
+    if(done!=bytes)return -1;
+    if(closed<0){np_startup_context("%s close=%d",name,closed);np_startup_error("asset-close");return -1;}
+    np_startup_done();snprintf(operation,sizeof(operation),"Verify SHA-256: %s",name);np_startup_operation(operation);
+    unsigned char hash[32];np_boot_sha256(target,bytes,hash);
+    if(memcmp(hash,expected,32)){np_startup_error("asset-hash");return -1;}
+    return 0;
 }
 const char *np_file_bridge_start(const NpFileLaunchRequest *r) {
     const char *error=storage_contract(r);if(error)return error;
@@ -416,8 +644,9 @@ const char *np_file_bridge_start(const NpFileLaunchRequest *r) {
     if(load("psxcore_filebridge",psxcore_filebridge_irx,size_psxcore_filebridge_irx,args,n))return "file-bridge-load";
     if(np_file_probe_only)return NULL;
     uint32_t state[4];
+    np_startup_operation("Check bridge save flush and readiness");
     if(fileXioDevctl("pfs1:",NP_FILE_CTL_FLUSH,NULL,0,NULL,0)<0 ||
        fileXioDevctl("pfs1:",NP_FILE_CTL_STATUS,NULL,0,state,sizeof(state))<0 || state[0]!=1 || state[1])return "file-bridge-flush";
-    printf("PSXCORE file-saves=ready mode=sony-shared card0=%s card1=%s flush-callback=completed durability=unverified\n",f->cards[0],f->cards[1]);
+    storage_trace("PSXCORE file-saves=ready mode=sony-shared card0=%s card1=%s flush-callback=completed durability=unverified\n",f->cards[0],f->cards[1]);
     return NULL;
 }

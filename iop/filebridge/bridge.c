@@ -219,8 +219,8 @@ static int execute_bridge_devctl(iop_file_t *f,const char *name,int cmd,void *ar
     uint32_t status[4]={save_failed?0u:1u,writers,flushes,replacements};memcpy(buffer,status,sizeof(status));
     return leave(0);
 }
-/* SDK IOMANX also redirects late ioman imports, including IOPCD's. Queue
- * both published device ABIs; reaching the SDK registry must not consume a
+/* Native IOMAN remains responsible for IOPCD's imports. Queue both published
+ * device ABIs; reaching the private SDK registry must not consume a
  * native caller's small stack in path routing or backing filesystem work. */
 static int bind_device(const char *expected_driver,unsigned expected_device);
 int64_t np_file_sdk_execute(const NpFileWork *r) {
@@ -306,6 +306,9 @@ static int reject_start(int registered) {
 }
 /* Startup filesystem work also belongs on the dedicated worker stack. */
 static int bind_path(const char *target,const char *expected_driver,unsigned expected_device,DiskBinding *out) {
+    /* The native POPSLoader ATA BDM names its block device "mass" while the
+     * frontend/backend contract remains "ata". USB continues to report usb. */
+    const char *native_driver=!strcmp(expected_driver,"ata")?"mass":expected_driver;
     int fd=iomanX_open(target,FIO_O_RDONLY,0);
     if(fd<0)return fd;
     char actual_driver[8]={0};unsigned actual_device=~0u;u64 lba=0;
@@ -314,7 +317,7 @@ static int bind_path(const char *target,const char *expected_driver,unsigned exp
     if(identity>=0)identity=iomanX_ioctl2(fd,USBMASS_IOCTL_GET_LBA,NULL,0,&lba,sizeof(lba));
     int closed=iomanX_close(fd);
     if(identity<0 || closed<0 || !memchr(actual_driver,0,sizeof(actual_driver)) ||
-       strcmp(actual_driver,expected_driver) || actual_device!=expected_device)return -ENODEV;
+       strcmp(actual_driver,native_driver) || actual_device!=expected_device)return -ENODEV;
     memset(out,0,sizeof(*out));
     struct block_device *list[20]={0};bdm_get_bd(list,20);
     for(unsigned i=0;i<20;++i)if(list[i] && list[i]->name && !strcmp(list[i]->name,actual_driver) &&

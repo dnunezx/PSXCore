@@ -1,0 +1,2 @@
+/* Reuse the SDK iomanx ABI. Its source directory is the first include path. */
+#include <exports.tab>

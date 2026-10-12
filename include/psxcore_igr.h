@@ -1,4 +1,4 @@
-/* Optional frontend-neutral IGR contract and normalized input policy.
+/* Optional frontend-neutral IGR contract, input and cooperative pause policies.
  * These helpers do not install POPS hooks, flush saves or enable runtime return. */
 #ifndef PSXCORE_IGR_H
 #define PSXCORE_IGR_H
@@ -44,8 +44,43 @@ const char *np_igr_input_init(NpIgrInput *state,const NpIgrConfig *config);
  * Gaps >100ms disarm. Duplicate reports never advance the hold or rearm.
  * RESERVED asks the adapter to hide the full shortcut from guest input,
  * including a stale valid sample that cannot advance the hold;
- * REQUEST is emitted once, and only requests a save-aware coordinator exit.
- * Neither flag grants permission to reset or bypass save completion. */
+ * REQUEST is emitted once and requests a runtime exit. The caller owns the
+ * exit mechanism; this policy does not save game progress. */
 uint32_t np_igr_input_update(NpIgrInput *state,uint16_t buttons,
     uint32_t sequence,uint32_t now_ms,int valid);
+
+/* Caller-owned cooperative pause policy, serialized by the runtime adapter.
+ * This is not an inter-thread mailbox: the adapter must synchronize requests,
+ * cancellation and polling. No POPS hook or kernel wait is installed here.
+ * A HOLD result applies only while that adapter owns the post-event boundary,
+ * excludes all new guest mutations and yields without dispatching guest events.
+ * It never authorizes save flush, teardown or ELF return. */
+#define NP_IGR_PAUSE_RUN 0u
+#define NP_IGR_PAUSE_HOLD 1u
+#define NP_IGR_PAUSE_IGNORE 2u
+#define NP_IGR_PAUSE_MAX_MS 60000u
+typedef struct {
+    uint32_t sequence,ticket,pending,held;
+    uint32_t started_ms,timeout_ms;
+} NpIgrPause;
+void np_igr_pause_init(NpIgrPause *state);
+/* Initialize once per session. Tickets belong only to that state/session.
+ * One outstanding request. Returns a nonzero ticket, or zero on rejection.
+ * Ticket exhaustion rejects requests rather than reusing an old identity.
+ * Timeout covers both acquisition and holding, in modulo-2^32 milliseconds. */
+uint32_t np_igr_pause_request(NpIgrPause *state,uint32_t now_ms,uint32_t timeout_ms);
+/* Cancellation requires the current ticket; stale tickets cannot resume a
+ * newer pause. If held, a new request remains rejected until the owner polls
+ * this cancellation. Cancel does not itself acknowledge guest resume. */
+int np_igr_pause_cancel(NpIgrPause *state,uint32_t ticket);
+/* Call only from the owning guest thread, including each cooperative wait turn.
+ * boundary_verified must mean committed CPU context, completed guest dispatch,
+ * and exclusion of every guest mutation source. card_command_idle must come
+ * from independently verified protocol tracking, never flags/counter alone.
+ * Only exact 1 is accepted. Missing proof, timeout or cancellation returns RUN;
+ * loss of proof while held retires the request. A stale/invalid ticket returns
+ * IGNORE and leaves the current request intact. IGNORE must never resume a held
+ * thread. RUN is an instruction to stop holding, not a resume acknowledgement. */
+uint32_t np_igr_pause_poll(NpIgrPause *state,uint32_t ticket,uint32_t now_ms,
+    int boundary_verified,int card_command_idle);
 #endif
