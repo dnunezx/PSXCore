@@ -59,6 +59,20 @@ target_link_libraries(your_target PRIVATE PSXCore::core)
 
 See [INTEGRATION.md](INTEGRATION.md) for API and runtime requirements. Forks, fixes, and integrations are welcome under the applicable license.
 
+## Thanks and upstream credits
+
+PSXCore benefits from work shared by the PS2 homebrew community. Thank you to:
+
+- **[israpps (El_isra)](https://github.com/israpps/BDMAssault)** for BDMAssault's USB exFAT drivers and the original POPSLoader project.
+- **saildot4k (R3Z3N)** for the BDMA-ATA driver used for internal hard drive support.
+- **[Ripto / NathanNeurotic](https://github.com/NathanNeurotic/POPSLoader)** for maintaining and publishing POPSLoader and its driver variants.
+- **krHACKen** for POPStarter, whose documented behavior informed PSXCore's launch and power button work.
+- **[PS2DEV and PS2SDK contributors](https://github.com/ps2dev/ps2sdk)** for the PS2 development tools, libraries, and `poweroff.irx`.
+- **[ChaN](https://elm-chan.org/fsw/ff/)** for FatFs, used by the storage drivers.
+- **[bucanero](https://github.com/bucanero/pops2cue)** for a public VCD format reference.
+
+Thanks also to **ShaolinAssassin and AstroSnail** for helping preserve POPStarter documentation. Attribution and license notices for bundled driver binaries are included with the runtime package; other dependencies are described in [THIRD_PARTY.md](THIRD_PARTY.md).
+
 ## License
 
 Copyright (c) 2026 Danny Nunez (dnunezx). Original PSXCore code uses the Academic Free License 3.0. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md). External dependencies retain their own licenses.
