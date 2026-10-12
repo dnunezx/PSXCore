@@ -665,8 +665,7 @@ static int install_graphics_hooks(const NpElf *elf) {
     return 0;
 }
 /* Reapply the queued native readback descriptor after the two manual FIFO
- * writes, before DMA starts. This retains the native descriptor on PS2 and
- * removes dependence on a test host preserving it across the FIFO writes.
+ * writes, before DMA starts, for the shared RGB24 conversion path.
  * The redirect's li a1,2 precedes the hook; its fixed CHCR store is equivalent. */
 static int install_readback_repair(const NpElf *elf) {
     const uintptr_t hook=(uintptr_t)np_graphics_readback_start;
@@ -719,7 +718,7 @@ static int adapt_firmware_license(const NpElf *elf) {
     }
     return -1;
 }
-/* PCSX2 diagnostic serial output survives FILEIO/RPC replacement. */
+/* EE serial output survives FILEIO/RPC replacement. */
 static void trace(const char *format,...) {
     char text[256];va_list args;va_start(args,format);
     int n=vsnprintf(text,sizeof(text),format,args);va_end(args);
@@ -820,11 +819,11 @@ int main(int argc,char **argv) {
     if(native) {
         hdd=image=adapt=game=hooks=minimal=1;
         license=!!(resolved.fixes&NP_FIX_LICENSE);
-        repair=!!(resolved.fixes&NP_FIX_READBACK);
+        repair=0;
     }
 #if NP_RGB24_SCANOUT_ADAPTER
     /* Native RGB24 conversion requires the checked readback adapter. Install
-     * that prerequisite on both supported platforms with the core feature,
+     * that prerequisite with the core feature,
      * independently of game profiles and optional fix selections. */
     if(native)repair=1;
 #endif

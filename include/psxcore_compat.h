@@ -6,14 +6,13 @@
 #include "psxcore_profile_catalog.h"
 #define NP_RUNTIME_KNOWN 1u
 #define NP_ENV_PS2 1u
-#define NP_ENV_PCSX2 2u
 #define NP_COMPAT_AUTO 0u
 #define NP_COMPAT_DEFAULT 1u
 #define NP_COMPAT_CUSTOM 2u
 #define NP_FIX_LICENSE 1u
-#define NP_FIX_READBACK 2u
-#define NP_FIX_ALL (NP_FIX_LICENSE | NP_FIX_READBACK | NP_FIX_CATALOG_MASK)
-#define NP_PROFILE_REVISION 3u
+/* Retired environment value 2 and fix bit 2 remain reserved. */
+#define NP_FIX_ALL (NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
+#define NP_PROFILE_REVISION 4u
 typedef struct {
     uint32_t mode, enable, disable, diagnostics;
 } NpCompatOptions;

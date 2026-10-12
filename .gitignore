@@ -34,3 +34,9 @@ POPS_IOX.PAK
 /runtime/igrloader/igrloader_symbols.h
 /runtime/igrloader/igrloader_config.h
 /runtime/igrloader/igrloader_config.tmp
+
+# Emulator-specific development material stays local.
+*[Pp][Cc][Ss][Xx]2*
+*[Pp][Cc][Xx]2*
+/emulation/
+/profiles/

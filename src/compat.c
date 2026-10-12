@@ -15,7 +15,6 @@ typedef struct {
 
 static uint32_t available(uint32_t environment) {
     uint32_t mask = NP_FIX_LICENSE;
-    if (environment == NP_ENV_PCSX2) mask |= NP_FIX_READBACK;
     for (unsigned i = 0; i < sizeof(s_catalogPatches)/sizeof(s_catalogPatches[0]); ++i)
         if (s_catalogPatches[i].environments & (1u << environment))
             mask |= s_catalogPatches[i].fix;
@@ -29,7 +28,7 @@ const char *np_compat_resolve(uint32_t runtime, uint32_t environment,
     if (out) memset(out, 0, sizeof(*out));
     if (!serial || !disc_sha256 || !options || !out) return "compat-input";
     if (runtime != NP_RUNTIME_KNOWN) return "compat-runtime";
-    if (environment != NP_ENV_PS2 && environment != NP_ENV_PCSX2) return "compat-environment";
+    if (environment != NP_ENV_PS2) return "compat-environment";
     if (options->mode > NP_COMPAT_CUSTOM || options->diagnostics > 1) return "compat-options";
     if ((options->enable | options->disable) & ~NP_FIX_ALL) return "compat-unknown-fix";
     if (options->enable & options->disable) return "compat-conflicting-overrides";
@@ -59,7 +58,7 @@ const char *np_compat_add_patches(uint32_t runtime, uint32_t environment,
     uint32_t fixes, NpPatchSet *set) {
     if (!set || set->count > NP_PATCH_LIMIT) return "compat-patch-input";
     if (runtime != NP_RUNTIME_KNOWN) return "compat-runtime";
-    if (environment != NP_ENV_PS2 && environment != NP_ENV_PCSX2) return "compat-environment";
+    if (environment != NP_ENV_PS2) return "compat-environment";
     if (fixes & ~available(environment)) return "compat-fix-unavailable";
     NpPatchSet next = *set;
     for (unsigned i = 0; i < sizeof(s_catalogPatches)/sizeof(s_catalogPatches[0]); ++i) {

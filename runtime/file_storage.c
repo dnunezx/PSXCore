@@ -542,8 +542,7 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
             disc_id_seen=1;overrides=1;if(!np_file_volume_id_parse(argv[++i],r->disc_volume))return "file-volume-id-format";
         } else if(!strcmp(argv[i],"--save-volume-id") && i+1<argc && !save_id_seen) {
             save_id_seen=1;overrides=1;if(!np_file_volume_id_parse(argv[++i],r->save_volume))return "file-volume-id-format";
-        } else if(!strcmp(argv[i],"--pcsx2")){r->environment=NP_ENV_PCSX2;overrides=1;}
-        else if(!strcmp(argv[i],"--license")){r->options.mode=NP_COMPAT_CUSTOM;r->options.enable|=NP_FIX_LICENSE;overrides=1;}
+        } else if(!strcmp(argv[i],"--license")){r->options.mode=NP_COMPAT_CUSTOM;r->options.enable|=NP_FIX_LICENSE;overrides=1;}
         else return "file-launch-arguments";
     }
     r->disc.backend=selected_backend;r->saves.backend=selected_save_backend?selected_save_backend:selected_backend;

@@ -67,7 +67,7 @@ void np_startup_done(void) {copy(completed,sizeof(completed),operation);draw();}
 void np_startup_selection(const char *backend,unsigned device,const char *save_backend,
         unsigned save_device,unsigned environment,const char *path) {
     snprintf(selection,sizeof(selection),"Disc: %s device %u; saves: %s device %u",backend,device,save_backend,save_device);
-    snprintf(environment_text,sizeof(environment_text),"Environment: %s",environment==1?"physical PS2":environment==2?"PCSX2":"unknown");
+    snprintf(environment_text,sizeof(environment_text),"Environment: %s",environment==1?"physical PS2":"unknown");
     copy(path_text,sizeof(path_text),path);draw();
 }
 void np_startup_context(const char *format,...) {

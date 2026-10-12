@@ -33,7 +33,7 @@ Initialize requests using `np_launch_init`, then fill:
 | Field | Contract |
 | --- | --- |
 | `runtime` | `NP_RUNTIME_KNOWN`, initialized automatically; the bootstrap independently verifies the runtime files. |
-| `environment` | `NP_ENV_PS2` or `NP_ENV_PCSX2`, supplied by a trusted frontend configuration. No automatic platform detection exists. |
+| `environment` | `NP_ENV_PS2`, supplied by a trusted frontend configuration. Other environment values are rejected. |
 | `disc_partition` | Existing APA partition such as `hdd0:PP.GAME`, containing the validated native `/disc/disc0` image. The partition name requires a dot followed by a nonempty suffix. |
 | `save_key` | Stable, persisted identity: 1–20 ASCII letters, digits, underscores or hyphens. A filename change must retain this key. |
 | `save_partition` | Existing, distinct partition named exactly `hdd0:PP.PSXC.<save_key>`, with the appropriate native `/ps1emu` layout. |
@@ -80,10 +80,9 @@ Resolution order is baseline, matching experimental profile, then Custom overrid
 
 | Fix | Implementation and boundary |
 | --- | --- |
-| `NP_FIX_LICENSE` | Guarded adaptation of an existing firmware license-string slot, requiring the existing native-sector fingerprint. Implemented experimentally for both platform values; not a general region fix or a hardware compatibility claim. |
-| `NP_FIX_READBACK` | Restores a native readback DMA descriptor after FIFO writes. Available only for the PCSX2 environment; console requests reject attempts to enable it. |
+| `NP_FIX_LICENSE` | Guarded adaptation of an existing firmware license-string slot, requiring the existing native-sector fingerprint. Implemented experimentally for PS2; not a general region fix or a hardware compatibility claim. |
 
-Revision 1 contains one automatic profile: the exact previously tested converted US Spyro image with serial `SCUS_942.28` and its full native-image SHA-256, under PCSX2. Unknown identities and console requests receive baseline behavior. Custom can disable either fix or enable an implemented platform capability. These two independent fixes currently have no declared dependency on each other. There are no implemented disc-read, controller, overclock, frame-skip, or audio-speed controls.
+Revision 4 ships no automatic game profiles. Requests receive baseline optional-fix behavior, and Custom can select the implemented license adapter. Retired environment value 2 and fix bit 2 remain reserved and are rejected. Shared POPS core corrections, including the RGB24 readback prerequisite when that feature is enabled, remain independent of optional profile selection. There are no implemented disc-read, controller, overclock, frame-skip, or audio-speed controls.
 
 `options.diagnostics = 0` suppresses optional resident interface trace output. Bootstrap configuration summaries, rejection reasons, and fatal initialization/save errors remain available. Startup logs report the original selected mode and actual prepared patch count, as well as the effective fixes for native requests.
 
@@ -95,7 +94,7 @@ The pinned native paths are `pfs1:/ps1emu/card0`, `card1`, and corresponding `ca
 
 Any guarded failure latches its stage/result, forces a diagnostic even when tracing is disabled, and stops EE scheduling before returning to the worker. Stage numbers are 1 open, 2 write, 3 close, 4 rename, 5 final flush, 6 semaphore creation, 7 thread creation, 8 thread start, 9 semaphore wait, and 10 backup flush before replacement. `save=flush-completed` reports a successful synchronous native flush return, not power-loss durability. A final-flush failure occurs after replacement and cannot undo it. This fatal guard supplies no recovery, frontend completion acknowledgement, or graceful shutdown; asynchronous game code may already have acknowledged the save.
 
-Local PCSX2 tests created two isolated card pairs, cold loaded distinct diagnostic contents in A–B–A order, and rejected an invalid card despite native return `1`. A separate copied disk/profile then queued original tail markers through the actual native worker. Both full-card writes were read back from storage; unrelated cards were unchanged. An injected backup-flush failure stopped before replacement, kept dirty flags set, and preserved both canonical cards. A fresh process using the production bootstrap loaded the last successful markers. Linked instruction tests separately cover all guarded failure stages, partial writes, ABI preservation and legacy behavior. These tests use synthetic contents and forced host termination; game-driven saving, graceful shutdown, all live failure stages, power-loss durability, broader compatibility and physical-console support remain unverified.
+Game-driven saving, graceful shutdown, all live failure stages, power-loss durability, broader compatibility and physical-console support remain unverified.
 
 No partition creation, save migration, retained backup history, capacity checks, ownership database, or frontend save-aware exit is implemented here. The native `.bak` file is temporary replacement staging, not a retained copy of the previous save. A frontend must persist and enforce identity ownership, explicitly approve shared identities for related discs, and provision/validate save storage before launch. Evaluate the APA allocation overhead before adopting one partition per game as the final design. General directory routing requires separate verified runtime work.
 

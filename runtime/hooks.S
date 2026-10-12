@@ -1378,8 +1378,8 @@ np_graphics_upload_hook:
     j 0x21b680
     nop
 /* The original interrupt has already drained its two outgoing FIFO qwords.
- * PCSX2's FIFO interpreter also consumes MADR/QWC for those writes. Restore
- * the existing native descriptor here, then execute the displaced DMA start.
+ * Restore the queued native descriptor required by the shared RGB24 path,
+ * then execute the displaced DMA start.
  * No descriptor, buffer, packet, vector state or worker schedule is changed. */
     .globl np_graphics_readback_start
 np_graphics_readback_start:
