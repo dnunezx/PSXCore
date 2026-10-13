@@ -6,13 +6,22 @@ This standalone repository contains the original implementation and its build fi
 
 Sony's POPS emulator remains proprietary and **is not included**. Runtime execution requires separately supplied, checksum-verified `POPS.ELF` and `IOPRP252.IMG`. No Sony runtime, firmware, game, save, or emulator binary is distributed here.
 
-## Status
 
-This is an experimental source release. The portable core validates VCD headers, fixed-size launch requests, and bounded ELF layouts and provides SHA-256 verification. It also resolves Automatic / Default / Custom compatibility options and validates complete patch sets before changing the staged runtime. The version-2 launch path selects an already prepared native disc partition and an explicit save partition; version 1 remains a separate dry-run API.
+## Improvements made
 
-The separate runtime bootstrap contains version-specific startup, transfer, and in-memory adaptation code. Its experimental save path guards native worker IO and startup errors. Actual in-game save/reload, graceful shutdown, power-loss durability, native-disc provisioning, runtime handoff from a frontend, broader game compatibility, and physical-console acceptance remain to be established. See [INTEGRATION.md](INTEGRATION.md) for the launch contract and verification boundaries.
+- **CPU and memory correctness:** guarded generated-memory access, a targeted return/load-delay correction, scratchpad read timing, internal branch-target cycle accounting, and validation of original decoded instructions before reusing compiled blocks. These address demonstrated startup and progression failures without editing game code.
+- **Graphics:** shared texture-window wrapping, valid linked GPU DMA from RAM address zero, GTE23 register writes, RGB24 movie conversion and update routing, display-transition handling, and buffered interlace presentation.
+- **Audio:** SPU capture IRQ delivery, audio-timer handling, CDDA playback, reverb processing, and preservation of voice/register state when enabling the SPU. Gap de-clicking reduces audible pops; it cannot correct sustained audio starvation.
+- **Performance:** RAM fast paths, GP0 packet coalescing and scalar writes, GPU DMA/raster accounting, and MDEC movie-decoding fast paths. Improvements depend on the scene; there is no universal full-speed claim.
+- **Launch and storage:** checked launch requests, Automatic / Default / Custom options, transactional runtime changes, FAT32/exFAT VCD access, native POPS storage integration, startup error reporting, and a physical power-button handler loaded after the POPS IOP reset.
 
-The portable prepared-disc catalog associates library images with existing native partitions by complete image SHA-256 and explicit stable save identity, then builds a checked v2 request from caller-measured image data. See [DISC-MAPPING.md](DISC-MAPPING.md). The consuming frontend owns image/storage verification, runtime transfer and provisioning; arbitrary-image conversion remains separate work.
+## Known issues
+
+- **USB storage:** the reported R5 failure with multiple USB storage devices remains unresolved.
+- **ATA/exFAT storage:** the R6/R7 bootstrap corrects the native ATA driver's device-name handling after reset. The affected physical PS2 launch path still needs hardware confirmation.
+- **Other storage devices:** MX4SIO integration is not ready to enable; MMCE support remains unfinished.
+- **IGR:** returning from a game to the frontend is unavailable. The isolated return-loader investigation currently stops while reading the destination ELF after the IOP reset. Input/policy helpers and diagnostic hooks do not constitute working IGR.
+- **Multiple discs:** in-game disc switching is not implemented. Frontend-managed disc groups and native protocol work remain in progress.
 
 ## Build
 
