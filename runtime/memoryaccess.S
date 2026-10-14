@@ -110,10 +110,10 @@ np_memory_group_plan_failed:
     /* RAM/mirrors cannot overlap native MMIO or expansion registers. Check
      * this common case before those cold paths without changing any access,
      * helper entry address, register contract or guest cycle charge. */
-    lui $a2,0x0080
-    sltu $a2,$v1,$a2
-    bnez $a2,\name\()_ram
+    dsrl $a2,$v1,23
+    beqz $a2,\name\()_ram
     nop
+    nop /* Keep cold paths and resident entry addresses fixed. */
 #endif
     lui $a2,0x1f80
     ori $a2,$a2,0x1000

@@ -19,20 +19,20 @@ RESIDENT unsigned np_code_guard_plan(uint32_t psx_pc, const uint32_t *records,
         (address & 3) || address < 0x100000u || address >= 0x2000000u ||
         (validator & 3) || validator < 0xff000u || validator >= 0x100000u)
         return 0;
-    /* Emit exact comparisons in the block itself. Short blocks avoid the
-     * shared validator's stack, metadata traversal and loop branches. */
+    /* Emit exact comparisons in the block itself. Aligned 64-bit pairs avoid
+     * SIMD reduction; short blocks avoid the shared validator's stack,
+     * metadata traversal and loop branches. */
     unsigned code = 2, source_hi = ~0u, comparisons = 0, units = 0;
     for (unsigned i = 0; i < count;) {
         if (!decoded(records,i)) { ++i; continue; }
         const uint32_t source = 0x40000000u | ((psx_pc + i * 4) & 0x1fffff);
         const unsigned hi = (source + 0x8000u) >> 16;
         if (hi != source_hi) { ++code; source_hi = hi; }
-        const int quad = !(source & 15) && i + 4 <= count &&
-            decoded(records,i+1) && decoded(records,i+2) && decoded(records,i+3);
-        code += quad ? 7 : 4;
+        const int pair = !(source & 7) && i + 2 <= count && decoded(records,i+1);
+        code += 4;
         ++units;
-        comparisons += quad ? 4 : 1;
-        i += quad ? 4 : 1;
+        comparisons += pair ? 2 : 1;
+        i += pair ? 2 : 1;
     }
     /* Each intermediate branch delay slot prepares the next comparison. */
     if (units) code -= units - 1;
@@ -58,23 +58,17 @@ RESIDENT unsigned np_code_guard_plan(uint32_t psx_pc, const uint32_t *records,
             else out[at++] = load;
             source_hi = hi;
         }
-        const int quad = !(source & 15) && i + 4 <= count &&
-            decoded(records,i+1) && decoded(records,i+2) && decoded(records,i+3);
-        const uint32_t load = (quad ? 0x78820000u : 0x8c820000u) | (source & 0xffff);
+        const int pair = !(source & 7) && i + 2 <= count && decoded(records,i+1);
+        const uint32_t load = (pair ? 0xdc820000u : 0x8c820000u) | (source & 0xffff);
         if (delay != ~0u) { out[delay] = load; delay = ~0u; }
         else out[at++] = load;
-        out[at++] = (quad ? 0x78a30000u : 0x8ca30000u) | (i * 4);
-        if (quad) {
-            out[at++] = 0x704314c9u; /* PXOR v0,v0,v1 */
-            out[at++] = 0x70421ba9u; /* PCPYUD v1,v0,v0 */
-            out[at++] = 0x704314a9u; /* POR v0,v0,v1 */
-        }
-        out[at] = (quad ? 0x14400000u : 0x14430000u) |
+        out[at++] = (pair ? 0xdca30000u : 0x8ca30000u) | (i * 4);
+        out[at] = 0x14430000u |
             ((failure - (address + at * 4) - 4) / 4);
         ++at;
         delay = at;
         out[at++] = 0;
-        i += quad ? 4 : 1;
+        i += pair ? 2 : 1;
     }
     out[at++] = 0x08000000u | (body >> 2);
     out[at++] = 0;
