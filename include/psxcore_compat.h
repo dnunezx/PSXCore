@@ -10,9 +10,13 @@
 #define NP_COMPAT_DEFAULT 1u
 #define NP_COMPAT_CUSTOM 2u
 #define NP_FIX_LICENSE 1u
+/* Code Validation: original exact decoded-instruction checker.
+ * Selected per game by a profile or CUSTOM enable/disable overrides. */
+#define NP_FIX_CODE_VALIDATION 8u
+#define NP_CODE_VALIDATION_LABEL "Code Validation"
 /* Retired environment value 2 and fix bit 2 remain reserved. */
-#define NP_FIX_ALL (NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
-#define NP_PROFILE_REVISION 4u
+#define NP_FIX_ALL (NP_FIX_CODE_VALIDATION | NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
+#define NP_PROFILE_REVISION 5u
 typedef struct {
     uint32_t mode, enable, disable, diagnostics;
 } NpCompatOptions;

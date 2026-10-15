@@ -196,11 +196,6 @@ static int install_code_guard(const NpElf *elf) {
     const uint32_t replacement[2]={0x08000000u|((uint32_t)capture>>2),expected[2][0]};
     return queue_word(sites[0],expected[0][0],0x0c000000u|((uint32_t)hook>>2)) ||
            queue_word(sites[1],expected[1][0],0x2442b000) ||
-#if NP_POPS_BLOCK_LIMIT
-           /* Native decoder window; retain exact validation for every word
-            * decoded into each resulting block. Apply before POPS starts. */
-           queue_word(0x502750,0x100,NP_POPS_BLOCK_LIMIT) ||
-#endif
            np_patch_add(&patch_set,sites[2],expected[2],replacement,8)?-1:0;
 }
 #if NP_PCM_BUFFER_RATE
@@ -850,10 +845,23 @@ int main(int argc,char **argv) {
     if(install_gte_color_adapter()) {
         trace("PSXCORE rejected=gte-color-patch-plan\n");goto rejected;
     }
-    if(install_code_guard(&elf)) {
-        trace("PSXCORE rejected=code-validation-patch-plan\n");goto rejected;
+    /* Native/file launches use the per-game compatibility selection.
+     * Legacy diagnostic modes retain the original exact-check behavior. */
+    const int code_validation=!native || (resolved.fixes & NP_FIX_CODE_VALIDATION);
+    if(code_validation) {
+        if(install_code_guard(&elf)) {
+            trace("PSXCORE rejected=code-validation-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE code-validation=decoded-instructions option=on invalidation=native\n");
+    } else {
+        trace("PSXCORE code-validation=native-only option=off\n");
     }
-    trace("PSXCORE code-validation=decoded-instructions scope=shared invalidation=native\n");
+#if NP_POPS_BLOCK_LIMIT
+    /* Decoder-window selection is independent of Code Validation. */
+    if(queue_word(0x502750,0x100,NP_POPS_BLOCK_LIMIT)) {
+        trace("PSXCORE rejected=block-limit-patch-plan\n");goto rejected;
+    }
+#endif
 #if NP_GPU_DMA_RASTER_SPLIT
     if(native) {
         if(install_gpu_dma_raster_split(&elf)) {
