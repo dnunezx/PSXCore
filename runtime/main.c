@@ -255,6 +255,18 @@ static int install_mdec_block_fastpaths(void) {
 #endif
 extern void np_gte_orgb(void),np_gte_orgb_end(void);
 extern void np_gte_irgb(void),np_gte_irgb_end(void);
+extern void np_gte_zero_depth(void),np_gte_zero_depth_end(void);
+static int install_gte_zero_depth_adapter(void) {
+    const uint32_t expected[7]={0x016c102a,0x54400005,0x3c0b0002,
+        0x15600002,0x01ab001b,0x000001cd,0x00005812};
+    const uintptr_t hook=(uintptr_t)np_gte_zero_depth;
+    const uintptr_t end=(uintptr_t)np_gte_zero_depth_end;
+    if(hook<(uintptr_t)np_gte_irgb_end || end<=hook || end>0xf7900 || (hook&3))return -1;
+    uint32_t replacement[7];memcpy(replacement,expected,sizeof(expected));
+    replacement[3]=0x08000000u|((uint32_t)hook>>2);
+    replacement[4]=replacement[5]=replacement[6]=0;
+    return np_patch_add(&patch_set,0x208a70,expected,replacement,sizeof(expected))?-1:0;
+}
 static int install_gte_color_adapter(void) {
     /* The pinned ORGB helper shifts to five bits, then PPAC5 discards three
      * more bits. Validate its complete body transactionally before redirecting
@@ -860,6 +872,9 @@ int main(int argc,char **argv) {
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     if(install_gte_color_adapter()) {
         trace("PSXCORE rejected=gte-color-patch-plan\n");goto rejected;
+    }
+    if(install_gte_zero_depth_adapter()) {
+        trace("PSXCORE rejected=gte-zero-depth-patch-plan\n");goto rejected;
     }
     /* Native/file launches use the per-game compatibility selection.
      * Legacy diagnostic modes retain the original exact-check behavior. */

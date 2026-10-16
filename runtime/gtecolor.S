@@ -53,3 +53,24 @@ np_gte_irgb:
     nop
     .globl np_gte_irgb_end
 np_gte_irgb_end:
+
+/* RTPS/RTPT may project a zero SZ3, including H=0. Native POPS reaches
+ * its compiler-generated division trap for that valid GTE overflow case.
+ * Preserve the native nonzero division and saturate only the zero case. */
+    .balign 16
+    .globl np_gte_zero_depth,np_gte_zero_depth_end
+np_gte_zero_depth:
+    bnez $11,1f
+    nop
+    lui $11,1
+    ori $11,$11,0xffff
+    lui $v0,0x8002
+    or $at,$at,$v0
+    j 0x208a8c
+    nop
+1:
+    .word 0x01ab001b /* Native DIVU $13,$11; avoid assembler ABI aliases. */
+    mflo $11
+    j 0x208a8c
+    nop
+np_gte_zero_depth_end:
