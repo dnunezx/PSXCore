@@ -245,19 +245,21 @@ np_gp0_video_barrier:
     j 0x21aeb8
     nop
 np_gp0_flush:
-    /* Syscalls preserve native registers except v0/v1. Preserve those and
-     * the semaphore argument as well, before tail-calling the original read. */
+    /* Inspect the deferred flag using only two saved wide temporaries. Keep
+     * the original frame layout; an empty flush needs no syscall context. */
     addiu $sp,$sp,-96
-    sq $ra,0($sp)
-    sq $v0,16($sp)
-    sq $v1,32($sp)
-    sq $a0,48($sp)
     sq $8,64($sp)
     sq $9,80($sp)
     la $8,np_gp0_records
     lw $9,0($8)
     beqz $9,np_gp0_flush_done
     nop
+    /* Native syscalls may change v0/v1. Save them, their argument and RA only
+     * for a pending flush, before any clear, trace update or semaphore call. */
+    sq $ra,0($sp)
+    sq $v0,16($sp)
+    sq $v1,32($sp)
+    sq $a0,48($sp)
     sw $zero,0($8)
 #if NP_GP0_PACKET_TRACE
     lw $9,12($8)
@@ -272,11 +274,11 @@ np_gp0_flush:
     lui $8,0x7000
     jal 0x22e840
     lw $a0,0x3c04($8)
-np_gp0_flush_done:
     lq $ra,0($sp)
     lq $v0,16($sp)
     lq $v1,32($sp)
     lq $a0,48($sp)
+np_gp0_flush_done:
     lq $8,64($sp)
     lq $9,80($sp)
     jr $ra
