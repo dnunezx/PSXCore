@@ -16,3 +16,5 @@ $(IOP_OBJS_DIR)vcd.o: ../../src/vcd.c
 	$(IOP_CC) $(IOP_CFLAGS) $(IOP_INCS) -c $< -o $@
 $(IOP_OBJS_DIR)boot_sha256.o: ../../src/boot_sha256.c ../../include/psxcore_boot.h ../../include/psxcore_hash.h
 	$(IOP_CC) $(IOP_CFLAGS) $(IOP_INCS) -c $< -o $@
+
+$(IOP_OBJS_DIR)bridge.o: disc_tail.h

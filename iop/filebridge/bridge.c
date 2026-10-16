@@ -8,6 +8,7 @@
 #include "psxcore_file.h"
 #include "native.h"
 #include "worker.h"
+#include "disc_tail.h"
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
@@ -96,6 +97,25 @@ static int deny64(void){return -EACCES;}
  * reads them. The backing handle remains read-only; saves use .bak instead. */
 static int backing_fd(const iop_file_t *f){return (int)((uintptr_t)f->privdata>>1)-1;}
 static int writable_handle(const iop_file_t *f){return ((uintptr_t)f->privdata&1)!=0;}
+/* Native USB seeks backward across a cluster can be expensive.
+ * Replay only the final sector already read from this read-only descriptor.
+ * Media validation and serialization still precede every cached operation. */
+#define NP_DISC_TAIL_SLOTS 8
+typedef struct {int used,fd;NpDiscTail tail;} DiscReadState;
+static DiscReadState disc_reads[NP_DISC_TAIL_SLOTS];
+static DiscReadState *disc_read_state(int fd) {
+    for(unsigned i=0;i<NP_DISC_TAIL_SLOTS;++i)
+        if(disc_reads[i].used && disc_reads[i].fd==fd)return &disc_reads[i];
+    return NULL;
+}
+static void disc_read_open(int fd) {
+    for(unsigned i=0;i<NP_DISC_TAIL_SLOTS;++i)if(!disc_reads[i].used) {
+        disc_reads[i].used=1;disc_reads[i].fd=fd;
+        np_disc_tail_position(&disc_reads[i].tail,0);return;
+    }
+    /* A full table preserves the original uncached descriptor behavior. */
+}
+
 static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode) {
     char target[NP_FILE_PATH_BYTES+8];int e=path(f->unit,name,target);
     if(e)return e;
@@ -114,6 +134,7 @@ static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode
     if(fd>=0) {
         if(fd>INT_MAX/2-1){iomanX_close(fd);return leave(-EOVERFLOW);}
         f->privdata=(void *)(((uintptr_t)(fd+1)<<1)|(unsigned)writing);
+        if(f->unit==0 && !strcmp(bindings[0].driver,"usb"))disc_read_open(fd);
         if(writing)++writers;
     }
     return leave(fd<0?fd:0);
@@ -122,7 +143,9 @@ static int execute_bridge_close(iop_file_t *f) {
     /* Close even if removed, so the underlying filesystem releases its handle. */
     if(lock<0 || WaitSema(lock)<0)return -EIO;
     int writing=writable_handle(f);
+    DiscReadState *state=disc_read_state(backing_fd(f));
     int result=iomanX_close(backing_fd(f));
+    if(state)state->used=0;
     f->privdata=NULL;
     if(writing && writers)--writers;
     if(writing && result<0)save_failed=1;
@@ -132,7 +155,10 @@ static int execute_bridge_close(iop_file_t *f) {
 static int execute_bridge_read(iop_file_t *f,void *p,int n) {
     if(n<0)return -EINVAL;
     int e=enter();if(e)return e;
-    return leave(iomanX_read(backing_fd(f),p,n));
+    DiscReadState *state=f->unit==0?disc_read_state(backing_fd(f)):NULL;
+    int result=state?np_disc_tail_read(&state->tail,backing_fd(f),p,n,iomanX_read):
+        iomanX_read(backing_fd(f),p,n);
+    return leave(result);
 }
 static int execute_bridge_write(iop_file_t *f,void *p,int n) {
     if(f->unit!=1 || !writable_handle(f) || n<0)return -EROFS;
@@ -146,7 +172,24 @@ static int execute_bridge_write(iop_file_t *f,void *p,int n) {
 static s64 execute_bridge_seek64(iop_file_t *f,s64 offset,int whence) {
     if(whence<0 || whence>2)return -EINVAL;
     int e=enter();if(e)return e;
-    s64 result=iomanX_lseek64(backing_fd(f),offset,whence);
+    DiscReadState *state=f->unit==0?disc_read_state(backing_fd(f)):NULL;
+    s64 result;
+    int64_t cached;
+    if(state && np_disc_tail_seek(&state->tail,offset,whence,&cached))result=cached;
+    else {
+        s64 backing_offset=offset;int backing_whence=whence;
+        if(state && state->tail.valid && whence==1) {
+            uint32_t logical=state->tail.logical;
+            if(offset<-(int64_t)logical || offset>INT64_MAX-logical) {
+                SignalSema(lock);return -EINVAL;
+            }
+            backing_offset=logical+offset;backing_whence=0;
+        }
+        result=iomanX_lseek64(backing_fd(f),backing_offset,backing_whence);
+        if(state && result>=0 && (uint64_t)result<=UINT32_MAX)
+            np_disc_tail_position(&state->tail,(uint32_t)result);
+        else if(state && result>=0)state->tail.valid=0;
+    }
     SignalSema(lock);return result;
 }
 static int execute_bridge_seek(iop_file_t *f,int offset,int whence){return (int)execute_bridge_seek64(f,offset,whence);}

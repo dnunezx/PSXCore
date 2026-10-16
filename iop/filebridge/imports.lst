@@ -19,6 +19,7 @@ bdm_IMPORTS_end
 sysclib_IMPORTS_start
 I_memset
 I_memcpy
+I_memmove
 I_memcmp
 I_memchr
 I_strlen
