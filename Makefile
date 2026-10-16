@@ -22,8 +22,8 @@ NP_INTERLACE_BUFFERED_PRESENT ?= 1
 NP_GPU_DMA_RASTER_SPLIT ?= 1
 NP_MDEC_BLOCK_FASTPATH ?= 1
 NP_RASTER_COST_FASTPATH ?= 1
-# Opt-in: low-queue feedback changes output tempo/pitch; native rate is default.
-NP_PCM_BUFFER_RATE ?= 0
+# Bounded low-queue output feedback; may temporarily change tempo/pitch.
+NP_PCM_BUFFER_RATE ?= 1
 NP_POPS_BLOCK_LIMIT ?= 0
 # Opt-in guest observations only; does not enable input masking or runtime return.
 NP_IGR_OBSERVE ?= 0

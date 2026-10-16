@@ -25,8 +25,8 @@ NP_INTERLACE_BUFFERED_PRESENT ?= 1
 NP_GPU_DMA_RASTER_SPLIT ?= 1
 NP_MDEC_BLOCK_FASTPATH ?= 1
 NP_RASTER_COST_FASTPATH ?= 1
-# Opt-in: low-queue feedback changes output tempo/pitch; native rate is default.
-NP_PCM_BUFFER_RATE ?= 0
+# Bounded low-queue output feedback; may temporarily change tempo/pitch.
+NP_PCM_BUFFER_RATE ?= 1
 # Opt-in native decoder window; full decoded-instruction validation stays on.
 NP_POPS_BLOCK_LIMIT ?= 0
 # Diagnostic input/save observations; return remains unavailable.
