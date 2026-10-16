@@ -498,6 +498,16 @@ extern void np_save_sema_hook(void),np_save_thread_hook(void),np_save_start_hook
 static int queue_word(uint32_t address, uint32_t expected, uint32_t replacement) {
     return np_patch_add(&patch_set,address,&expected,&replacement,4)?-1:0;
 }
+extern void np_cpu_loop_cycle_boundary(void),np_cpu_loop_cycle_boundary_end(void);
+static int install_cpu_loop_cycle_boundary(void) {
+    const uint32_t expected[4]={0x0000202d,0xaf9e883c,0x0c081b2a,0xaee06b80};
+    const uintptr_t hook=(uintptr_t)np_cpu_loop_cycle_boundary;
+    const uintptr_t end=(uintptr_t)np_cpu_loop_cycle_boundary_end;
+    if(hook<0xf0000 || end<=hook || end>0xf7000 || (hook&3))return -1;
+    const uint32_t replacement[4]={expected[0],expected[1],
+        0x0c000000u|((uint32_t)hook>>2),expected[3]};
+    return np_patch_add(&patch_set,0x202788,expected,replacement,sizeof(expected))?-1:0;
+}
 /* Experimental shared adaptation of the checksum-pinned POPS scalar emitter.
  * Its three-word memory/NOOP reservation is finalized before generated code
  * can run. The original epilogue delay slot is retained. */
@@ -919,7 +929,10 @@ int main(int argc,char **argv) {
     }
 #endif
     if(native) {
-        trace("PSXCORE cpu-loop-cycle-boundary=0 scope=shared-compiler\n");
+        if(install_cpu_loop_cycle_boundary()) {
+            trace("PSXCORE rejected=cpu-loop-cycle-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE cpu-loop-cycle-boundary=1 scope=shared-compiler\n");
     }
 #if NP_MEMORY_ACCESS_ADAPTER
     if(native) {
