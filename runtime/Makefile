@@ -24,6 +24,7 @@ NP_RGB24_SCANOUT_ADAPTER ?= 1
 NP_INTERLACE_BUFFERED_PRESENT ?= 1
 NP_GPU_DMA_RASTER_SPLIT ?= 1
 NP_MDEC_BLOCK_FASTPATH ?= 1
+NP_RASTER_COST_FASTPATH ?= 1
 # Opt-in: low-queue feedback changes output tempo/pitch; native rate is default.
 NP_PCM_BUFFER_RATE ?= 0
 # Opt-in native decoder window; full decoded-instruction validation stays on.
@@ -54,6 +55,7 @@ EE_CFLAGS += -DNP_RGB24_SCANOUT_ADAPTER=$(NP_RGB24_SCANOUT_ADAPTER)
 EE_CFLAGS += -DNP_INTERLACE_BUFFERED_PRESENT=$(NP_INTERLACE_BUFFERED_PRESENT)
 EE_CFLAGS += -DNP_GPU_DMA_RASTER_SPLIT=$(NP_GPU_DMA_RASTER_SPLIT)
 EE_CFLAGS += -DNP_MDEC_BLOCK_FASTPATH=$(NP_MDEC_BLOCK_FASTPATH)
+EE_CFLAGS += -DNP_RASTER_COST_FASTPATH=$(NP_RASTER_COST_FASTPATH)
 EE_CFLAGS += -DNP_PCM_BUFFER_RATE=$(NP_PCM_BUFFER_RATE)
 EE_CFLAGS += -DNP_POPS_BLOCK_LIMIT=$(NP_POPS_BLOCK_LIMIT)
 EE_CFLAGS += -DNP_IGR_OBSERVE=$(NP_IGR_OBSERVE)
@@ -71,7 +73,7 @@ codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distr
 codeguard.o: codeguard.c codeguard.h
 codeguard_asm.o: codeguard.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S pcmflow.S dmacycles.S
+memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S pcmflow.S dmacycles.S rastermath.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_LIBS = -lfileXio -liopreboot -lpatches -ldebug
 EE_LINKFILE = linkfile

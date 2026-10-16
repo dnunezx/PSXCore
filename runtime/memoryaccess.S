@@ -784,7 +784,7 @@ np_video_wait_result:
     .space 16
     .balign 16
 np_video_trace_records:
-#if NP_AUDIO_GAP_DECLICK || NP_SPU_CAPTURE_IRQ || NP_SPU_REVERB_READONLY || NP_MDEC_BLOCK_FASTPATH || NP_PCM_BUFFER_RATE
+#if NP_AUDIO_GAP_DECLICK || NP_SPU_CAPTURE_IRQ || NP_SPU_REVERB_READONLY || NP_MDEC_BLOCK_FASTPATH || NP_PCM_BUFFER_RATE || NP_RASTER_COST_FASTPATH
 #if NP_MEMORY_ACCESS_TRACE
 #error "SPU adapters reuse the inactive video trace ring; disable tracing"
 #endif
@@ -802,6 +802,9 @@ np_video_trace_records:
 #endif
 #if NP_PCM_BUFFER_RATE
 #include "pcmflow.S"
+#endif
+#if NP_RASTER_COST_FASTPATH
+#include "rastermath.S"
 #endif
     .space 4096-(.-np_video_trace_records)
 #else

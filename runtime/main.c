@@ -209,6 +209,22 @@ static int install_pcm_buffer_rate(void) {
     return np_patch_add(&patch_set,0x213f3c,expected,replacement,sizeof(expected))?-1:0;
 }
 #endif
+#if NP_RASTER_COST_FASTPATH
+extern void np_raster_div100(void),np_raster_cost_end(void);
+static int install_raster_cost_fastpath(void) {
+    const uint32_t sites[4]={0x21ea94,0x21eae4,0x21f94c,0x21f998};
+    const uint32_t expected[4][2]={{0x0c08f01a,0},{0x0c08f01a,0x0040202d},
+        {0x0c08f01a,0},{0x0c08f01a,0x0040202d}};
+    const uintptr_t hook=(uintptr_t)np_raster_div100;
+    const uintptr_t end=(uintptr_t)np_raster_cost_end;
+    if(hook<0xf3cd0 || end<=hook || end>0xf4cd0 || (hook&3))return -1;
+    for(unsigned i=0;i<4;++i) {
+        const uint32_t replacement[2]={0x0c000000u|((uint32_t)hook>>2),expected[i][1]};
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,8))return -1;
+    }
+    return 0;
+}
+#endif
 #if NP_MDEC_BLOCK_FASTPATH
 extern void np_mdec_fast_begin(void),np_mdec_fast_end(void);
 extern void np_mdec_dc(void),np_mdec_flat(void),np_mdec_rle_dc(void),np_mdec_clear(void);
@@ -884,6 +900,14 @@ int main(int argc,char **argv) {
             trace("PSXCORE rejected=spu-reverb-patch-plan\n");goto rejected;
         }
         trace("PSXCORE spu-reverb-readonly=1 scope=shared filtering=native\n");
+    }
+#endif
+#if NP_RASTER_COST_FASTPATH
+    if(native) {
+        if(install_raster_cost_fastpath()) {
+            trace("PSXCORE rejected=raster-cost-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE raster-cost-fastpath=1 arithmetic=exact fallback=native\n");
     }
 #endif
 #if NP_AUDIO_GAP_DECLICK
