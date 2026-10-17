@@ -9,6 +9,7 @@ EE_OBJS += igrquit.o
 EE_OBJS += cdobserve.o
 EE_OBJS += cdrendezvous.o
 EE_OBJS += cdprotocol.o
+EE_OBJS += cdreadstatus.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0

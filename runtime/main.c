@@ -570,6 +570,21 @@ static int install_video_transition_fix(const NpElf *elf) {
            queue_word(site+4,expected[1],0)?-1:0;
 }
 #endif
+extern void np_cd_read_status(void),np_cd_read_status_end(void);
+static int install_cd_read_status_fix(void) {
+    const uintptr_t hook=(uintptr_t)np_cd_read_status;
+    const uintptr_t end=(uintptr_t)np_cd_read_status_end;
+    if(hook<0xf7fc0 || end<=hook || end>0xf8000 || (hook&3))return -1;
+    /* All three sync words were accepted before this boundary. Keep their
+     * mismatch branches and the following sector-header publication intact. */
+    const uint32_t expected[8]={0x3c0200ff,0x8e430008,0x3442ffff,0x54620055,
+        0xdfb00000,0x8a42000f,0x9a42000c,0xaa020023};
+    uint32_t replacement[8];
+    memcpy(replacement,expected,sizeof(expected));
+    replacement[5]=0x08000000u|((uint32_t)hook>>2);
+    replacement[6]=0;
+    return np_patch_add(&patch_set,0x20e8ec,expected,replacement,sizeof(expected))?-1:0;
+}
 #if NP_MEMORY_ACCESS_TRACE && NP_MEMORY_ACCESS_ADAPTER
 static int install_memory_wait_trace(const NpElf *elf) {
     const uint32_t sites[6]={0x21a8a0,0x21a9c8,0x21ab98,0x21adb8,0x21aec8,0x21c650};
@@ -944,6 +959,10 @@ int main(int argc,char **argv) {
     }
 #endif
     if(native) {
+        if(install_cd_read_status_fix()) {
+            trace("PSXCORE rejected=cd-read-status-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE cd-read-status-fix=1 seek-completion=verified-sector scope=shared-runtime\n");
         if(install_cpu_loop_cycle_boundary()) {
             trace("PSXCORE rejected=cpu-loop-cycle-patch-plan\n");goto rejected;
         }

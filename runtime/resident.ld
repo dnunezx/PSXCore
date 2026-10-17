@@ -18,7 +18,11 @@ ASSERT(. <= 0x000f7900, "runtime GTE color helper overflow")
  KEEP(*(._psxcore_interlace_scanout))
  KEEP(*(._psxcore_igr_probe_stack))
 } :resident
-ASSERT(. <= 0x000f8000, "runtime interlace scanout helpers overflow")
+ASSERT(. <= 0x000f7fc0, "runtime interlace scanout helpers overflow")
+.cd_read_status 0x000f7fc0: {
+ KEEP(*(._psxcore_cd_read_status))
+} :resident
+ASSERT(. <= 0x000f8000, "runtime CD read status helper overflow")
 .resident 0x000f8000: {
  KEEP(*(._psxcore_transfer))
  *libkernel.a:*(.text .text.* .rodata .rodata.* .data .data.*)
