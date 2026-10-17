@@ -241,6 +241,14 @@ static int install_raster_cost_fastpath(void) {
 extern void np_mdec_fast_begin(void),np_mdec_fast_end(void);
 extern void np_mdec_dc(void),np_mdec_flat(void),np_mdec_rle_dc(void),np_mdec_clear(void);
 static int install_mdec_block_fastpaths(void) {
+    extern void np_mdec_color_fast(void),np_mdec_color_end(void);
+    extern char np_video_command_records[];
+    const uintptr_t color=(uintptr_t)np_mdec_color_fast;
+    const uintptr_t color_end=(uintptr_t)np_mdec_color_end;
+    const uintptr_t color_arena=(uintptr_t)np_video_command_records;
+    if((color&3) || color_arena<0xf0000 || color_arena>0xf6800 || color<color_arena || color_end<=color || color_end>color_arena+2048)return -1;
+
+
     /* The full POPS hash/layout is checked before this transactional plan.
      * Guard the displaced prologues and clear call. Keep helpers in the unused
      * trace-ring reservation. Native DMA completion and decoder state remain

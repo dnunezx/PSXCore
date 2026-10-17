@@ -112,7 +112,7 @@ codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distr
 codeguard.o: codeguard.c codeguard.h
 codeguard_asm.o: codeguard.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S pcmflow.S dmacycles.S rastermath.S
+memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S mdeccolor.S pcmflow.S dmacycles.S rastermath.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_LIBS = -lfileXio -liopreboot -lpatches -ldebug
 EE_LINKFILE = linkfile

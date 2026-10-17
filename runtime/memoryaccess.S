@@ -835,7 +835,15 @@ np_video_csr_records:
 np_video_command_written:
     .space 16
 np_video_command_records:
+#if NP_MDEC_BLOCK_FASTPATH
+#if NP_MEMORY_ACCESS_TRACE
+#error "MDEC RGB24 helper owns the inactive command trace area"
+#endif
+#include "mdeccolor.S"
+    .org np_video_command_records+2048,0
+#else
     .space 2048
+#endif
     .globl np_video_worker_written,np_video_worker_records,np_video_unknown_context
 np_video_worker_written:
     .space 16

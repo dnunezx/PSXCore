@@ -238,9 +238,9 @@ np_mdec_gray_row:
     jr $ra
     nop
 np_mdec_flat_original:
-    addiu $sp,$sp,-48
-    j 0x20da00
-    lui $v0,0x5a
+    j np_mdec_color_fast
+    nop
+    nop
     .balign 16
 np_mdec_flat_end:
 
