@@ -570,6 +570,30 @@ static int install_video_transition_fix(const NpElf *elf) {
            queue_word(site+4,expected[1],0)?-1:0;
 }
 #endif
+extern void np_clut_refresh_start(void),np_clut_refresh_end(void);
+extern void np_clut_refresh_polygon(void),np_clut_refresh_sprite(void);
+static int install_clut_refresh(void) {
+    const uintptr_t start=(uintptr_t)np_clut_refresh_start;
+    const uintptr_t end=(uintptr_t)np_clut_refresh_end;
+    const uintptr_t hooks[2]={(uintptr_t)np_clut_refresh_polygon,
+        (uintptr_t)np_clut_refresh_sprite};
+    const uint32_t sites[2]={0x21ec10,0x21fb04};
+    const uint32_t expected[2][8]={
+        {0xfc450000,0x24420008,0x24430020,0x24040007,
+         0xae230000,0xfc460008,0xfc470010,0xfc440018},
+        {0x0285a024,0x24050006,0x24460030,0x0003183e,
+         0x8e092658,0x24070007,0xad460000,0x24080045}};
+    if(start<0xf7d40 || end<=start || end>0xf7fc0 || (start&3))return -1;
+    for(unsigned i=0;i<2;++i) {
+        if(hooks[i]<start || hooks[i]>=end || (hooks[i]&3))return -1;
+        uint32_t replacement[8];
+        memcpy(replacement,expected[i],sizeof(replacement));
+        replacement[2]=0x08000000u|((uint32_t)hooks[i]>>2);
+        replacement[3]=0;
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,sizeof(replacement)))return -1;
+    }
+    return 0;
+}
 extern void np_cd_read_status(void),np_cd_read_status_end(void);
 static int install_cd_read_status_fix(void) {
     const uintptr_t hook=(uintptr_t)np_cd_read_status;
@@ -885,6 +909,10 @@ int main(int argc,char **argv) {
     }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    if(native && install_clut_refresh()) {
+        trace("PSXCORE rejected=clut-refresh-patch-plan\n");goto rejected;
+    }
+    if(native)trace("PSXCORE clut-refresh=1 formats=indexed paths=polygon,sprite scope=shared-runtime\n");
     if(install_gte_color_adapter()) {
         trace("PSXCORE rejected=gte-color-patch-plan\n");goto rejected;
     }
