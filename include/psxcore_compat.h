@@ -15,7 +15,10 @@
 #define NP_FIX_CODE_VALIDATION 8u
 #define NP_CODE_VALIDATION_LABEL "Code Validation"
 /* Retired environment value 2 and fix bit 2 remain reserved. */
-#define NP_FIX_ALL (NP_FIX_CODE_VALIDATION | NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
+/* Optional output-rate feedback; may lower pitch. Disabled unless selected. */
+#define NP_FIX_ADAPTIVE_AUDIO 16u
+#define NP_ADAPTIVE_AUDIO_LABEL "Adaptive Audio"
+#define NP_FIX_ALL (NP_FIX_ADAPTIVE_AUDIO | NP_FIX_CODE_VALIDATION | NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
 #define NP_PROFILE_REVISION 5u
 typedef struct {
     uint32_t mode, enable, disable, diagnostics;

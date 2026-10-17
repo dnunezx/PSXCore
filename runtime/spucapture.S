@@ -13,30 +13,28 @@ np_spu_capture_irq:
      * live 128-bit GPRs and both packed HI/LO pairs across IRQ dispatch.
      * Leave argument space below the saves for the native callee. */
     addiu $sp,$sp,-576
-    .irp reg,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,30,31
-    sq $\reg,(32+16*\reg)($sp)
-    .endr
-    pmfhi $v0
-    sq $v0,544($sp)
-    pmflo $v0
-    sq $v0,560($sp)
+    /* Most chunks need only classification. Delay the remaining wide
+     * saves and packed HI/LO until the native dispatcher is required. */
+    sq $v0,64($sp)
+    sq $a0,96($sp)
+    sq $a1,112($sp)
     /* Native mix chunks are 1..32 samples; reject unexpected state. */
     addiu $v0,$fp,-1
     sltiu $v0,$v0,32
-    beqz $v0,np_spu_capture_finish
+    beqz $v0,.Lcapture_bypass
     nop
     lw $a0,0x26c($v1)
     sltiu $v0,$a0,512
-    beqz $v0,np_spu_capture_finish
+    beqz $v0,.Lcapture_bypass
     nop
     lhu $v0,0x1aa($v1)
     andi $v0,$v0,0x8040
     ori $a1,$zero,0x8040
-    bne $v0,$a1,np_spu_capture_finish
+    bne $v0,$a1,.Lcapture_bypass
     nop
     lhu $v0,0x1a4($v1)
     sltiu $a1,$v0,0x200
-    beqz $a1,np_spu_capture_finish
+    beqz $a1,.Lcapture_bypass
     nop
     /* IRQ units are eight bytes. Buffer selection does not change the
      * shared sample position: (address % 1024) / sizeof(int16_t). */
@@ -45,8 +43,17 @@ np_spu_capture_irq:
     subu $v0,$v0,$a0
     andi $v0,$v0,0x1ff
     sltu $v0,$v0,$fp
-    beqz $v0,np_spu_capture_finish
+    beqz $v0,.Lcapture_bypass
     nop
+    .irp reg,1,3,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,30,31
+    sq $\reg,(32+16*\reg)($sp)
+    .endr
+    pmfhi $v0
+    sq $v0,544($sp)
+    pmflo $v0
+    sq $v0,560($sp)
+    /* Native 0x210b38 overwrites v0 before reading it. Arguments and
+     * all other live registers retain the original dispatch state. */
     jal 0x210b38
     nop
 np_spu_capture_finish:
@@ -54,9 +61,13 @@ np_spu_capture_finish:
     pmthi $v0
     lq $v0,560($sp)
     pmtlo $v0
-    .irp reg,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,30,31
+    .irp reg,1,3,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,30,31
     lq $\reg,(32+16*\reg)($sp)
     .endr
+.Lcapture_bypass:
+    lq $v0,64($sp)
+    lq $a0,96($sp)
+    lq $a1,112($sp)
     addiu $sp,$sp,576
     /* Replay both displaced instructions. The native mask/store follow. */
     lw $v0,0x26c($v1)

@@ -10,6 +10,15 @@
 #if NP_CD_PROTOCOL
 #include "cdprotocol.h"
 #define CD_CODE __attribute__((section("._psxcore_cd_protocol.text")))
+#if NP_CD_CONTROL
+#define CD_ACCEPT __attribute__((section("._psxcore_cd_control.text")))
+#define CONTROL_ACTION(a) ((a)==NP_CD_PROTO_STOP || (a)==NP_CD_PROTO_SETMODE)
+#define CONTROL_IRQ(p,i) ((p)->action==NP_CD_PROTO_STOP && (i)==1)
+#else
+#define CD_ACCEPT CD_CODE
+#define CONTROL_ACTION(a) 0
+#define CONTROL_IRQ(p,i) 0
+#endif
 static CD_CODE int valid(const NpCdProtocol *s) {
     return s && s->generation && s->token && s->phase<=NP_CD_PROTO_EMPTY &&
         s->change_latch<=1 && s->open_event_pending<=1 && !s->reserved &&
@@ -31,7 +40,7 @@ static CD_CODE void clear_plan(const NpCdProtocol *s,NpCdProtocolPlan *p) {
 static CD_CODE uint8_t status(const NpCdProtocol *s,uint8_t native) {
     unsigned latch=s->change_latch?0x10u:0;
     if(s->phase==NP_CD_PROTO_READY)return (native&0xefu)|latch;
-    if(s->phase==NP_CD_PROTO_DETECT)return 2u|latch;
+    if(s->phase==NP_CD_PROTO_DETECT)return (native&2u)|latch;
     return latch;
 }
 static CD_CODE void reply(NpCdProtocolPlan *p,unsigned i,unsigned irq,
@@ -129,15 +138,15 @@ CD_CODE int np_cd_protocol_open_event(const NpCdProtocol *s,uint32_t error_bit,
     p->replies[0].payload[1]=8;p->clear_open_event=1;
     return 1;
 }
-CD_CODE int np_cd_protocol_accept(NpCdProtocol *s,const NpCdProtocolPlan *p,
+CD_ACCEPT int np_cd_protocol_accept(NpCdProtocol *s,const NpCdProtocolPlan *p,
     uint32_t queued_count) {
     if(!valid(s) || !p || p->generation!=s->generation || p->token!=s->token ||
        s->token==UINT32_MAX)return -1;
     if((p->action!=NP_CD_PROTO_REPLY && p->action!=NP_CD_PROTO_INIT_ACK &&
-        p->action!=NP_CD_PROTO_INIT_COMPLETE) || p->count<1 || p->count>2 || queued_count!=p->count)return 0;
+        p->action!=NP_CD_PROTO_INIT_COMPLETE && !CONTROL_ACTION(p->action)) || p->count<1 || p->count>2 || queued_count!=p->count)return 0;
     for(unsigned i=0;i<p->count;++i)if(!p->replies[i].length || p->replies[i].length>8 ||
         (p->replies[i].irq!=3 && p->replies[i].irq!=5 &&
-         !(p->action==NP_CD_PROTO_INIT_COMPLETE && p->replies[i].irq==2)) ||
+         !((p->action==NP_CD_PROTO_INIT_COMPLETE || CONTROL_IRQ(p,i)) && p->replies[i].irq==2)) ||
         p->replies[i].delay>NP_CD_PROTO_ASYNC_DELAY)return -1;
     if(p->clear_latch>1 || p->clear_open_event>1 ||
        (p->clear_latch && p->clear_open_event) ||
@@ -146,6 +155,17 @@ CD_CODE int np_cd_protocol_accept(NpCdProtocol *s,const NpCdProtocolPlan *p,
     if(p->clear_latch && (p->count!=1 || p->replies[0].irq!=3 || p->replies[0].length!=1))return -1;
     if(p->clear_open_event && (p->count!=1 || p->replies[0].irq!=5 || p->replies[0].length!=2 ||
         p->replies[0].payload[1]!=8))return -1;
+#if NP_CD_CONTROL
+    if(CONTROL_ACTION(p->action)) {
+        unsigned stop=p->action==NP_CD_PROTO_STOP;
+        if(s->init_token || s->open_event_pending || s->phase==NP_CD_PROTO_DISABLED ||
+           p->clear_latch || p->clear_open_event || p->count!=(stop?2u:1u) ||
+           p->replies[0].irq!=3 || p->replies[0].length!=1 ||
+           p->replies[0].delay!=NP_CD_PROTO_ACK_DELAY ||
+           (stop && (p->replies[1].irq!=2 || p->replies[1].length!=1 ||
+            p->replies[1].delay!=NP_CD_PROTO_ASYNC_DELAY)))return -1;
+    }
+#endif
     if(p->action==NP_CD_PROTO_INIT_ACK || p->action==NP_CD_PROTO_INIT_COMPLETE) {
         unsigned complete=p->action==NP_CD_PROTO_INIT_COMPLETE;
         if(p->count!=1 || p->clear_latch || p->clear_open_event || s->open_event_pending ||

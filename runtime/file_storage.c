@@ -46,6 +46,7 @@ static void storage_trace(const char *format,...) {
 MODULE(iomanX);MODULE(fileXio);MODULE(ps2dev9);MODULE(bdm);MODULE(bdmfs_fatfs);
 MODULE(ata_bd);MODULE(usbd);MODULE(usbmass_bd);MODULE(psxcore_nativegate);MODULE(psxcore_filebridge);
 MODULE(poweroff);
+MODULE(psxcore_powerbutton);
 MODULE(psxcore_iomanx);
 MODULE(bdma_usb_fs);MODULE(bdma_usb_bd);MODULE(bdma_ata_fs);MODULE(bdma_ata_bd);MODULE(psxcore_massproxy);
 static char mounted[8],save_mounted[8];
@@ -116,7 +117,7 @@ static int storage_init(int reset,int pops) {
             np_startup_error("native-storage-mixed-backend-unimplemented");return -1;
         }
         if(selected_backend==NP_FILE_BACKEND_USB){LOAD(bdma_usb_fs);LOAD(bdma_usb_bd);}
-        else {LOAD(bdma_ata_fs);LOAD(bdma_ata_bd);}
+        else {LOAD(bdma_ata_fs);LOAD(bdma_ata_bd);LOAD(psxcore_powerbutton);}
         LOAD(psxcore_iomanx);LOAD(psxcore_massproxy);LOAD(fileXio);
     } else {
         LOAD(iomanX);LOAD(fileXio);LOAD(bdm);LOAD(bdmfs_fatfs);
@@ -543,6 +544,23 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
         } else if(!strcmp(argv[i],"--save-volume-id") && i+1<argc && !save_id_seen) {
             save_id_seen=1;overrides=1;if(!np_file_volume_id_parse(argv[++i],r->save_volume))return "file-volume-id-format";
         } else if(!strcmp(argv[i],"--license")){r->options.mode=NP_COMPAT_CUSTOM;r->options.enable|=NP_FIX_LICENSE;overrides=1;}
+        else if(!strcmp(argv[i],"--adaptive-audio") || !strcmp(argv[i],"--no-adaptive-audio")) {
+            r->options.mode=NP_COMPAT_CUSTOM;
+            if(!strcmp(argv[i],"--adaptive-audio")) {
+                r->options.enable|=NP_FIX_ADAPTIVE_AUDIO;
+                r->options.disable&=~NP_FIX_ADAPTIVE_AUDIO;
+            } else {
+                r->options.disable|=NP_FIX_ADAPTIVE_AUDIO;
+                r->options.enable&=~NP_FIX_ADAPTIVE_AUDIO;
+            }
+            overrides=1;
+        }
+        else if(!strcmp(argv[i],"--no-code-validation")) {
+            r->options.mode=NP_COMPAT_CUSTOM;
+            r->options.disable|=NP_FIX_CODE_VALIDATION;
+            r->options.enable&=~NP_FIX_CODE_VALIDATION;
+            overrides=1;
+        }
         else return "file-launch-arguments";
     }
     r->disc.backend=selected_backend;r->saves.backend=selected_save_backend?selected_save_backend:selected_backend;

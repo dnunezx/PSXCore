@@ -14,7 +14,7 @@ typedef struct {
 #include "compat_profiles.generated.h"
 
 static uint32_t available(uint32_t environment) {
-    uint32_t mask = NP_FIX_LICENSE | NP_FIX_CODE_VALIDATION;
+    uint32_t mask = NP_FIX_LICENSE | NP_FIX_CODE_VALIDATION | NP_FIX_ADAPTIVE_AUDIO;
     for (unsigned i = 0; i < sizeof(s_catalogPatches)/sizeof(s_catalogPatches[0]); ++i)
         if (s_catalogPatches[i].environments & (1u << environment))
             mask |= s_catalogPatches[i].fix;

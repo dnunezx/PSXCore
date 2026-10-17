@@ -1,0 +1,23 @@
+dev9_IMPORTS_start
+I_dev9Shutdown
+dev9_IMPORTS_end
+/* Exactly eight bytes: avoid the SDK macro's implicit string terminator. */
+static struct irx_import_table _imp_poweroff
+    __attribute__((section(".text\n\t#"),unused))={
+    .magic=IMPORT_MAGIC,.version=IRX_VER(1,1),
+    .name={'p','o','w','e','r','o','f','f'},
+};
+I_SetPowerButtonHandler
+I_PoweroffShutdown
+poweroff_IMPORTS_end
+thbase_IMPORTS_start
+I_CreateThread
+I_StartThread
+I_DeleteThread
+thbase_IMPORTS_end
+thsemap_IMPORTS_start
+I_CreateSema
+I_DeleteSema
+I_WaitSema
+I_iSignalSema
+thsemap_IMPORTS_end

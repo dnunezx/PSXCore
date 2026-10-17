@@ -1,6 +1,6 @@
 EE_BIN = psxcore.elf
 .DEFAULT_GOAL := all
-FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd usbd usbmass_bd poweroff psxcore_nativegate psxcore_filebridge psxcore_iomanx bdma_usb_fs bdma_usb_bd bdma_ata_fs bdma_ata_bd psxcore_massproxy
+FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd usbd usbmass_bd poweroff psxcore_powerbutton psxcore_nativegate psxcore_filebridge psxcore_iomanx bdma_usb_fs bdma_usb_bd bdma_ata_fs bdma_ata_bd psxcore_massproxy
 EE_OBJS = main.o startup_diag.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
 EE_INCS = -I../../include
 EE_OBJS += igrobserve.o
@@ -9,6 +9,12 @@ EE_OBJS += igrquit.o
 EE_OBJS += cdobserve.o
 EE_OBJS += cdrendezvous.o
 EE_OBJS += cdprotocol.o
+EE_OBJS += cdresponse.o cdresponse_native.o
+EE_OBJS += cdcontrol.o
+EE_OBJS += cdsession.o
+EE_OBJS += cdpark.o
+EE_OBJS += cdgate.o cdgate_native.o
+EE_OBJS += cdcontext.o
 EE_OBJS += cdreadstatus.o
 EE_OBJS += clutrefresh.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
@@ -27,7 +33,7 @@ NP_INTERLACE_BUFFERED_PRESENT ?= 1
 NP_GPU_DMA_RASTER_SPLIT ?= 1
 NP_MDEC_BLOCK_FASTPATH ?= 1
 NP_RASTER_COST_FASTPATH ?= 1
-# Bounded low-queue output feedback; may temporarily change tempo/pitch.
+# Include optional audio-rate feedback; launch selection defaults off.
 NP_PCM_BUFFER_RATE ?= 1
 # Opt-in native decoder window; full decoded-instruction validation stays on.
 NP_POPS_BLOCK_LIMIT ?= 0
@@ -43,6 +49,12 @@ endif
 NP_CD_OBSERVE ?= 0
 NP_CD_RENDEZVOUS ?= 0
 NP_CD_PROTOCOL ?= 0
+NP_CD_RESPONSE ?= 0
+NP_CD_CONTROL ?= 0
+NP_CD_SESSION ?= 0
+NP_CD_PARK ?= 0
+NP_CD_GATE ?= 0
+NP_CD_CONTEXT ?= 0
 EE_CFLAGS += -DNP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER)
 EE_CFLAGS += -DNP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
 EE_CFLAGS += -DNP_MEMORY_RAM_FASTPATH=$(NP_MEMORY_RAM_FASTPATH)
@@ -68,7 +80,32 @@ EE_CFLAGS += -DNP_IGR_RETURN=$(NP_IGR_RETURN)
 EE_CFLAGS += -DNP_CD_OBSERVE=$(NP_CD_OBSERVE)
 EE_CFLAGS += -DNP_CD_RENDEZVOUS=$(NP_CD_RENDEZVOUS)
 EE_CFLAGS += -DNP_CD_PROTOCOL=$(NP_CD_PROTOCOL)
+EE_CFLAGS += -DNP_CD_RESPONSE=$(NP_CD_RESPONSE)
+EE_CFLAGS += -DNP_CD_CONTROL=$(NP_CD_CONTROL)
+EE_CFLAGS += -DNP_CD_SESSION=$(NP_CD_SESSION)
+EE_CFLAGS += -DNP_CD_PARK=$(NP_CD_PARK)
+EE_CFLAGS += -DNP_CD_GATE=$(NP_CD_GATE)
+EE_CFLAGS += -DNP_CD_CONTEXT=$(NP_CD_CONTEXT)
+cdcontext.o: cdcontext.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+cdgate.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdgate.o: cdgate.c cdgate.h cdpark.h
+cdgate_native.o: cdgate_native.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+cdpark.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdpark.o: cdpark.c cdpark.h
+cdsession.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdsession.o: cdsession.c cdsession.h cdcontrol.h cdresponse.h cdprotocol.h
+cdcontrol.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdcontrol.o: cdcontrol.c cdcontrol.h cdprotocol.h cdresponse.h
+cdresponse.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdresponse.o: cdresponse.c cdresponse.h cdprotocol.h
+cdresponse_native.o: cdresponse_native.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 cdprotocol.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+ifeq ($(NP_CD_RESPONSE),1)
+cdprotocol.o: EE_CFLAGS += -Os
+endif
 cdprotocol.o: cdprotocol.c cdprotocol.h
 memoryaccess.o: EE_CFLAGS += -G0 -fno-jump-tables
 codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
@@ -88,6 +125,8 @@ psxcore_filebridge_irx.c: ../psxcore_filebridge.irx
 	$(PS2SDK)/bin/bin2c $< $@ psxcore_filebridge_irx
 psxcore_nativegate_irx.c: ../psxcore_nativegate.irx
 	$(PS2SDK)/bin/bin2c $< $@ psxcore_nativegate_irx
+psxcore_powerbutton_irx.c: ../psxcore_powerbutton.irx
+	$(PS2SDK)/bin/bin2c $< $@ psxcore_powerbutton_irx
 psxcore_iomanx_irx.c: ../psxcore_iomanx.irx
 	$(PS2SDK)/bin/bin2c $< $@ psxcore_iomanx_irx
 bdma_usb_fs_irx.c: ../bdma_usb_fs.irx

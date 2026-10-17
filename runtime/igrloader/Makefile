@@ -1,11 +1,12 @@
 EE_BIN = igrloader.elf
-EE_OBJS = entry.o main.o elf.o igr.o
+EE_OBJS = entry.o main.o cleanexec.o igr.o
 EE_INCS = -I../../include
 EE_CFLAGS = -G0 -Os -Wall -Wextra -Werror
 NP_IGR_RETURN_PATH ?= mc0:/BOOT/BOOT.ELF
 NP_IGR_RESET_DEBUG ?= 0
 EE_LINKFILE = linkfile
 EE_LDFLAGS = -Wl,-Map=igrloader.map
+EE_LIBS = -lpatches
 .DEFAULT_GOAL := all
 all: igrloader.bin igrloader_symbols.h
 $(EE_BIN): linkfile
@@ -16,8 +17,6 @@ igrloader_config.h: FORCE
 	printf '#define NP_IGR_RESET_DEBUG %s\n' '$(NP_IGR_RESET_DEBUG)' >> igrloader_config.tmp
 	if ! cmp -s igrloader_config.tmp $@; then cp igrloader_config.tmp $@; fi
 main.o: igrloader_config.h
-elf.o: ../../src/elf.c
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 igr.o: ../../src/igr.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 linkfile: $(PS2SDK)/ee/startup/linkfile Makefile

@@ -1,14 +1,15 @@
-/* Native menu quit -> independent SDK runtime -> memory-card ELF.
+/* Native POPS quit -> independent SDK runtime -> memory-card ELF.
+ * Return sequence follows LUNA/Neutrino: clean ROM IOP, memory-card modules,
+ * SifLoadElf, then ExecPS2 with the configured path and returned GP.
  * No automatic save, save-worker wakeup, drain, or browser fallback. */
-#include "psxcore_elf.h"
 #include "psxcore_igr.h"
 #include <kernel.h>
 #include <sifrpc.h>
 #include <sifcmd.h>
 #include <loadfile.h>
 #include <iopcontrol.h>
-#define NEWLIB_PORT_AWARE
-#include <fileio.h>
+#include <iopheap.h>
+#include <sbv_patches.h>
 #include <ps2sdkapi.h>
 #include <string.h>
 
@@ -22,8 +23,10 @@ PS2_DISABLE_AUTOSTART_PTHREAD();
 _Static_assert(sizeof(NP_IGR_RETURN_PATH)<=NP_IGR_PATH_BYTES,"IGR return path size");
 static char return_path[]=NP_IGR_RETURN_PATH;
 static char *return_argv[]={return_path,NULL};
-/* Independent record survives target loads, because they start at 1 MiB.
- * phase: 1 entry, 2 reset, 3 modules, 4 read, 5 checked, 6 copy, 7 exec.
+/* The resident loader and its stack end below 0xef000. Return executables
+ * must load above that boundary, as with Neutrino's resident return code.
+ * phase: 1 entry, 2 reset, 3 modules, 4 SDK ELF load, 7 exec.
+ * bytes is reserved (zero); the SDK does not report the ELF file size.
  * This is diagnostic progress, never a save-completion/durability claim. */
 volatile struct { unsigned magic,version,phase; int error; unsigned entry,bytes; }
     np_igr_return_status={0x5257504e,1,0,0,0,0};
@@ -67,6 +70,9 @@ static void fail(int error) {
     *(volatile unsigned long *)0x120000e0=0x000000ff;
     for(;;)__asm__ volatile("nop");
 }
+void np_igr_clean_exec(void *entry,void *gp,int argc,char **argv) __attribute__((noreturn));
+void np_igr_exec_failed(void) __attribute__((noreturn));
+void np_igr_exec_failed(void) { fail(-14); }
 int main(int argc,char **argv) {
     (void)argc;(void)argv;
     np_igr_return_status.phase=1;
@@ -78,44 +84,22 @@ int main(int argc,char **argv) {
     while(!reset_iop())if((unsigned)(ticks()-started)>1474560000u)fail(-2);
     while(!SifIopSync())if((unsigned)(ticks()-started)>1474560000u)fail(-3);
     SifInitRpc(0);
+    if(SifInitIopHeap()<0)fail(-8);
     if(SifLoadFileInit()<0)fail(-4);
+    if(sbv_patch_enable_lmb()<0)fail(-15);
+    if(sbv_patch_disable_prefix_check()<0)fail(-16);
     np_igr_return_status.phase=3;
     static const char *const modules[]={"rom0:SIO2MAN","rom0:MCMAN","rom0:MCSERV"};
     for(unsigned i=0;i<3;++i)if(SifLoadModule(modules[i],0,NULL)<0)fail(-5-(int)i);
-    if(fioInit()<0)fail(-8);
+    /* Unlike Neutrino's owned EE core, POPS still needs its high-memory
+     * ExecPS2 handoff code. Do not blanket-wipe it. SifLoadElf initializes
+     * the selected executable's load segments. */
     np_igr_return_status.phase=4;
-    int fd=fioOpen(return_path,O_RDONLY);
-    if(fd<0)fail(-9);
-    int bytes=fioLseek(fd,0,SEEK_END);
-    if(bytes<52 || (unsigned)bytes>NP_ELF_MAX_BYTES || fioLseek(fd,0,SEEK_SET)!=0) {
-        fioClose(fd);fail(-10);
-    }
-    unsigned char *stage=(void *)0x01800000;
-    unsigned got=0;
-    while(got<(unsigned)bytes) {
-        unsigned chunk=(unsigned)bytes-got;if(chunk>16384)chunk=16384;
-        int n=fioRead(fd,stage+got,(int)chunk);
-        if(n<=0 || (unsigned)n>chunk){fioClose(fd);fail(-11);}
-        got+=(unsigned)n;
-    }
-    if(fioClose(fd)<0)fail(-12);
-    NpElf elf;
-    if(np_elf_check(stage,got,&elf))fail(-13);
-    np_igr_return_status.entry=elf.entry;
-    np_igr_return_status.bytes=got;
-    np_igr_return_status.phase=5;
-    /* All validation precedes every target-memory write. The existing core
-     * contract excludes this loader/stack, kernel and staging buffer. */
-    np_igr_return_status.phase=6;
-    for(unsigned i=0;i<elf.count;++i) {
-        const NpSegment *s=&elf.segments[i];
-        memcpy((void *)(uintptr_t)s->address,stage+s->offset,s->filesz);
-        memset((void *)(uintptr_t)(s->address+s->filesz),0,s->memsz-s->filesz);
-    }
-    fioExit();SifLoadFileExit();SifExitRpc();
+    t_ExecData elf={0};
+    if(SifLoadElf(return_path,&elf)<0 || !elf.epc)fail(-9);
+    np_igr_return_status.entry=elf.epc;
+    SifExitIopHeap();SifLoadFileExit();SifExitRpc();
     FlushCache(0);FlushCache(2);
     np_igr_return_status.phase=7;
-    /* Like the existing bootstrap, SDK crt0 establishes the target's GP. */
-    ExecPS2((void *)(uintptr_t)elf.entry,NULL,1,return_argv);
-    fail(-14);
+    np_igr_clean_exec((void *)(uintptr_t)elf.epc,(void *)(uintptr_t)elf.gp,1,return_argv);
 }

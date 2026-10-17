@@ -28,8 +28,7 @@
 #define NP_FILE_CARD1 "/POPS/ps1emu/card1"
 #define NP_FILE_CTL_FLUSH 0x50584301u
 #define NP_FILE_CTL_STATUS 0x50584302u
-/* Frontend supplies two existing, formatted PS1 cards. No ownership,
- * provisioning, enrollment or legacy private-card conversion in the runtime. */
+/* The runtime uses the selected existing pair; frontends may provision cards. */
 typedef struct {
     uint32_t backend, device, required, reserved;
 } NpFileEndpoint;
@@ -76,6 +75,7 @@ int np_file_card_pair_valid(const char cards[2][NP_FILE_PATH_BYTES]);
 const char *np_file_route(unsigned unit,const char *name,const char *disc,
     const char cards[2][NP_FILE_PATH_BYTES],char *out,size_t capacity);
 int np_file_card_header_valid(const unsigned char *bytes,size_t size);
+int np_file_card_format_frame(unsigned frame,unsigned char bytes[128]);
 /* Bounds/alignment used by the native IOPCD file reader. */
 const char *np_file_read_span(uint64_t size,uint32_t lba,uint32_t count,
     uint32_t *offset,uint32_t *length,uint32_t *alignment);

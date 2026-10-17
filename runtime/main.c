@@ -8,6 +8,18 @@
 #include "startup_diag.h"
 #include "config.h"
 #include "saveguards.h"
+#ifndef NP_CD_CONTEXT
+#define NP_CD_CONTEXT 0
+#endif
+#if NP_CD_CONTEXT!=0 && NP_CD_CONTEXT!=1
+#error "NP_CD_CONTEXT must be 0 or 1"
+#endif
+#if NP_CD_CONTEXT
+#if !NP_CD_GATE || NP_CD_RENDEZVOUS || NP_IGR_RETURN
+#error "CD context observations require CD gate code and exclusive diagnostic hooks"
+#endif
+#include "cdcontext.h"
+#endif
 #ifndef NP_IGR_WAIT
 #define NP_IGR_WAIT 0
 #endif
@@ -359,6 +371,7 @@ static int install_spu_capture_adapter(void) {
 #endif
 #if NP_SPU_REVERB_READONLY
 extern void np_spu_reverb_start(void),np_spu_reverb_end(void);
+extern void np_spu_reverb_call(void),np_spu_reverb_tail(void),np_spu_reverb_context_end(void);
 extern void np_spu_reverb_lsame(void),np_spu_reverb_rsame(void);
 extern void np_spu_reverb_ldiff(void),np_spu_reverb_rdiff(void);
 extern void np_spu_reverb_lapf1(void),np_spu_reverb_rapf1(void);
@@ -387,7 +400,19 @@ static int install_spu_reverb_write_guards(void) {
             expected[i][2],expected[i][3]};
         if(np_patch_add(&patch_set,sites[i],expected[i],replacement,sizeof(replacement)))return -1;
     }
-    return 0;
+    /* Full firmware identity pins the leaf's unused at register and its
+     * only caller. Preserve both its ordinary return and IRQ tail return. */
+    const uintptr_t call=(uintptr_t)np_spu_reverb_call;
+    const uintptr_t tail=(uintptr_t)np_spu_reverb_tail;
+    const uintptr_t context_end=(uintptr_t)np_spu_reverb_context_end;
+    if(call<0xf7900 || tail<=call || context_end<=tail || context_end>0xf8000 ||
+       (call&3) || (tail&3))return -1;
+    const uint32_t call_expected[2]={0x0c0848e8,0x24500350};
+    const uint32_t tail_expected[2]={0x080842ce,0x27bd0130};
+    const uint32_t call_replacement[2]={0x0c000000u|((uint32_t)call>>2),call_expected[1]};
+    const uint32_t tail_replacement[2]={0x08000000u|((uint32_t)tail>>2),tail_expected[1]};
+    return np_patch_add(&patch_set,0x21133c,call_expected,call_replacement,8) ||
+           np_patch_add(&patch_set,0x212ffc,tail_expected,tail_replacement,8)?-1:0;
 }
 #endif
 #if NP_AUDIO_GAP_DECLICK
@@ -1064,11 +1089,18 @@ int main(int argc,char **argv) {
     }
 #endif
 #if NP_PCM_BUFFER_RATE
-    if(native) {
+    if(native && (resolved.fixes & NP_FIX_ADAPTIVE_AUDIO)) {
         if(install_pcm_buffer_rate()) {
             trace("PSXCORE rejected=pcm-buffer-rate-patch-plan\n");goto rejected;
         }
-        trace("PSXCORE pcm-buffer-rate=1 output-only=1 minimum-step=3387 nominal-step=3763\n");
+        trace("PSXCORE adaptive-audio=on output-only=1 minimum-step=3387 nominal-step=3763\n");
+    }
+#endif
+    if(native && !(resolved.fixes & NP_FIX_ADAPTIVE_AUDIO))
+        trace("PSXCORE adaptive-audio=off resampler=native\n");
+#if !NP_PCM_BUFFER_RATE
+    if(native && (resolved.fixes & NP_FIX_ADAPTIVE_AUDIO)) {
+        trace("PSXCORE rejected=adaptive-audio-not-built\n");goto rejected;
     }
 #endif
 #if NP_IGR_OBSERVE
@@ -1151,6 +1183,16 @@ int main(int argc,char **argv) {
     if(error)goto rejected;
     trace("PSXCORE igr-return=experimental trigger=native-menu saves=user-owned status=%08x bytes=24\n",
         NP_IGR_LOADER_STATUS);
+#endif
+#if NP_CD_CONTEXT
+    if(!native){error="cd-context-native";goto rejected;}
+    error=np_runtime_cd_context_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+        (uintptr_t)np_cd_gate_begin,(uintptr_t)np_cd_gate_code_end,(uintptr_t)np_cd_gate_end,
+        (uintptr_t)&np_cd_gate,(uintptr_t)np_cd_context_boot,(uintptr_t)np_cd_context_write,
+        (uintptr_t)np_cd_context_tail,(uintptr_t)np_cd_context,(uintptr_t)np_cd_context_end,&patch_set);
+    if(error)goto rejected;
+    trace("PSXCORE cd-context=minimal-frame-observations record=%08x bytes=768 gate=unarmed\n",
+        (unsigned)(uintptr_t)np_cd_context);
 #endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}

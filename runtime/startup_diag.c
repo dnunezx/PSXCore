@@ -7,7 +7,7 @@
 #include <debug.h>
 #endif
 #ifndef NP_STARTUP_BUILD
-#define NP_STARTUP_BUILD "startup-20261012-r7"
+#define NP_STARTUP_BUILD "startup-20261012-r8"
 #endif
 enum { WIDTH=68, ROWS=22 };
 static char previous[ROWS][WIDTH],frame[ROWS][WIDTH];
