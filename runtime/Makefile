@@ -1,7 +1,7 @@
 EE_BIN = psxcore.elf
 .DEFAULT_GOAL := all
 FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd usbd usbmass_bd poweroff psxcore_powerbutton psxcore_nativegate psxcore_filebridge psxcore_iomanx bdma_usb_fs bdma_usb_bd bdma_ata_fs bdma_ata_bd psxcore_massproxy
-EE_OBJS = main.o startup_diag.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
+EE_OBJS = reverbexact.o main.o startup_diag.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
 EE_INCS = -I../../include
 EE_OBJS += igrobserve.o
 EE_OBJS += igrwait.o
@@ -112,7 +112,7 @@ codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distr
 codeguard.o: codeguard.c codeguard.h
 codeguard_asm.o: codeguard.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S mdec.S mdecchroma.S mdeccolor.S mdecrle.S pcmflow.S dmacycles.S rastermath.S
+memoryaccess_asm.o: memoryaccess.S audio.S spucapture.S spureverb.S spureverbexact.S mdec.S mdecchroma.S mdeccolor.S mdecrle.S pcmflow.S dmacycles.S rastermath.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_LIBS = -lfileXio -liopreboot -lpatches -ldebug
 EE_LINKFILE = linkfile
@@ -143,3 +143,6 @@ linkfile: $(PS2SDK)/ee/startup/linkfile resident.ld Makefile
 	sed -e 's/text PT_LOAD;/resident PT_LOAD; text PT_LOAD;/' -e 's/\.text 0x00100000: {/INCLUDE resident.ld\n .text 0x00100000: {/' -e 's/_end = \. ;/_end = . ; ASSERT(. < 0x00800000, "runtime loader\/staging overlap")/' -e 's/PROVIDE(_stack = -1);/PROVIDE(_stack = 0x00f00000);/' -e 's/PROVIDE(_heap_size = -1);/PROVIDE(_heap_size = 0x100000);/' $< > $@
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal
+
+reverbexact.o: reverbexact.c
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Wno-unused-variable -Wno-unused-but-set-variable -fno-strict-aliasing -fwrapv -Os -c $< -o $@

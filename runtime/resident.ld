@@ -68,6 +68,11 @@ ASSERT(. <= 0x000f8000, "runtime CD read status helper overflow")
  KEEP(*(._psxcore_cd_rendezvous))
  KEEP(*(._psxcore_cd_protocol.text))
  KEEP(*(._psxcore_cd_response.text))
+ . = ALIGN(16);
+ np_reverb_exact_start = .;
+ KEEP(*(._psxcore_reverb_exact))
+ KEEP(*(._psxcore_reverb_bridge))
+ np_reverb_exact_end = .;
 } :resident
 ASSERT(. <= 0x000ff000, "runtime transfer resident overflow")
 .code_guard 0x000ff000: {

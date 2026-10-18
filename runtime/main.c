@@ -429,6 +429,16 @@ static int install_spu_reverb_write_guards(void) {
     }
     /* Full firmware identity pins the leaf's unused at register and its
      * only caller. Preserve both its ordinary return and IRQ tail return. */
+    extern char np_reverb_exact_start[],np_reverb_exact_end[];
+    extern void np_reverb_exact32(void),np_reverb_recompile(void),np_reverb_recompile_end(void);
+    const uintptr_t exact=(uintptr_t)np_reverb_exact32;
+    const uintptr_t exact_start=(uintptr_t)np_reverb_exact_start;
+    const uintptr_t exact_end=(uintptr_t)np_reverb_exact_end;
+    const uintptr_t bridge=(uintptr_t)np_reverb_recompile;
+    const uintptr_t bridge_end=(uintptr_t)np_reverb_recompile_end;
+    if(exact_start<0xf8000 || exact_end<=exact_start || exact_end>0xff000 ||
+       exact<exact_start || exact>=exact_end || bridge<exact_start ||
+       bridge_end<=bridge || bridge_end>exact_end || ((exact|bridge)&3))return -1;
     const uintptr_t call=(uintptr_t)np_spu_reverb_call;
     const uintptr_t tail=(uintptr_t)np_spu_reverb_tail;
     const uintptr_t context_end=(uintptr_t)np_spu_reverb_context_end;

@@ -42,8 +42,8 @@ np_spu_reverb_end:
     .balign 16
     .globl np_spu_reverb_call,np_spu_reverb_tail,np_spu_reverb_context_end
 np_spu_reverb_call:
-    addiu $sp,$sp,-32
-    sq $1,0($sp)
+    j np_reverb_recompile
+    nop
     sq $ra,16($sp)
     jal 0x2123a0
     nop
@@ -61,3 +61,5 @@ np_spu_reverb_tail:
     .balign 16
 np_spu_reverb_context_end:
     .popsection
+
+#include "spureverbexact.S"
