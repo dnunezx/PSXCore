@@ -1,6 +1,7 @@
 /* Original, opt-in POPS producer adapter. Never buffers or edits commands.
- * Defer only incomplete fixed drawing packets in the native buffer. Completed
- * packets, DMA, polylines, transfers and unknown states always wake natively.
+ * Defer only incomplete fixed drawing packets or A0 upload headers in the
+ * native buffer. Completed headers, pixel data, DMA, polylines and unknown
+ * states always wake natively.
  * All callers except the pinned CPU MMIO single-word path retain native calls.
  * That caller discards the writer result. Native capacity/backpressure, parser,
  * interrupt state and guest cycle accounting are untouched. */
@@ -68,6 +69,13 @@ np_gp0_publish:
     nop
     lw $9,0($9)
     srl $9,$9,24
+    /* A0 has a fixed three-word header in the pinned native table. Once its
+     * third word is present, publish immediately: the native worker owns all
+     * pixel acquisition, transfer completion and buffer reuse. This also
+     * excludes data words while the worker's active-command field is set. */
+    addiu $10,$9,-0xa0
+    beqz $10,np_gp0_fixed
+    nop
     /* Fixed polygons 20..3f, lines 40..47/50..57, rectangles 60..7f.
      * Exclude variable polylines despite their table's fixed initial length. */
     addiu $10,$9,-0x20
