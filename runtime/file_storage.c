@@ -555,10 +555,15 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
             }
             overrides=1;
         }
-        else if(!strcmp(argv[i],"--no-code-validation")) {
+        else if(!strcmp(argv[i],"--code-validation") || !strcmp(argv[i],"--no-code-validation")) {
             r->options.mode=NP_COMPAT_CUSTOM;
-            r->options.disable|=NP_FIX_CODE_VALIDATION;
-            r->options.enable&=~NP_FIX_CODE_VALIDATION;
+            if(!strcmp(argv[i],"--code-validation")) {
+                r->options.enable|=NP_FIX_CODE_VALIDATION;
+                r->options.disable&=~NP_FIX_CODE_VALIDATION;
+            } else {
+                r->options.disable|=NP_FIX_CODE_VALIDATION;
+                r->options.enable&=~NP_FIX_CODE_VALIDATION;
+            }
             overrides=1;
         }
         else return "file-launch-arguments";
