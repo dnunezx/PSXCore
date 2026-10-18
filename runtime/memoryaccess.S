@@ -806,7 +806,10 @@ np_video_trace_records:
 #if NP_RASTER_COST_FASTPATH
 #include "rastermath.S"
 #endif
-    .space 4096-(.-np_video_trace_records)
+#if NP_MDEC_BLOCK_FASTPATH
+#include "mdecrle.S"
+#endif
+    .org np_video_trace_records+4096,0
 #else
     .space 4096
 #endif
@@ -827,10 +830,14 @@ np_video_csr_records:
 #error "DMA accounting owns the inactive CSR trace area"
 #endif
 #include "dmacycles.S"
-    .space 2048-(.-np_video_csr_records)
-#else
-    .space 2048
 #endif
+#if NP_MDEC_BLOCK_FASTPATH
+#if NP_MEMORY_ACCESS_TRACE
+#error "MDEC chroma helper owns the inactive CSR trace area"
+#endif
+#include "mdecchroma.S"
+#endif
+    .org np_video_csr_records+2048,0
     .globl np_video_command_written,np_video_command_records
 np_video_command_written:
     .space 16

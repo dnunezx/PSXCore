@@ -1,7 +1,8 @@
 /* Original shortcuts for the checksum-pinned POPS MDEC decoder.
  * These change computation cost only: scheduling, DMA and clocks stay native.
- * Each shortcut checks its complete input before writing output; unsupported
- * inputs replay the displaced native prologue. No tracing or mutable state. */
+ * Shortcuts guard their qualifying inputs; general paths retain native read
+ * and store order. Unsupported inputs replay the native prologue. No tracing
+ * or mutable state. */
     .balign 16
     .globl np_mdec_fast_begin
 np_mdec_fast_begin:
@@ -183,9 +184,9 @@ np_mdec_flat_row:
  * below every possible signed-halfword lookup address, so repeated native
  * lookups cannot observe our output stores. Input and output stay disjoint. */
 np_mdec_flat_native:
-    lui $v0,0x59
-    ori $v0,$v0,0x79c0
-    bne $a0,$v0,np_mdec_flat_original
+    j np_mdec_chroma_select
+    nop
+    nop
     andi $v0,$a1,7
     bnez $v0,np_mdec_flat_original
     lui $v0,0x54
@@ -307,9 +308,9 @@ np_mdec_rle_return:
     jr $ra
     nop
 np_mdec_rle_native:
-    addiu $sp,$sp,-32
-    j 0x20d2b0
-    sd $s2,16($sp)
+    j np_mdec_rle_general
+    nop
+    nop
     .balign 16
     .globl np_mdec_fast_end
 np_mdec_fast_end:

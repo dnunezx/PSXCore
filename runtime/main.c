@@ -241,6 +241,25 @@ static int install_raster_cost_fastpath(void) {
 extern void np_mdec_fast_begin(void),np_mdec_fast_end(void);
 extern void np_mdec_dc(void),np_mdec_flat(void),np_mdec_rle_dc(void),np_mdec_clear(void);
 static int install_mdec_block_fastpaths(void) {
+    extern void np_mdec_chroma_select(void),np_mdec_chroma_end(void);
+    extern char np_video_csr_records[];
+    const uintptr_t chroma=(uintptr_t)np_mdec_chroma_select;
+    const uintptr_t chroma_end=(uintptr_t)np_mdec_chroma_end;
+    const uintptr_t chroma_arena=(uintptr_t)np_video_csr_records;
+    uintptr_t chroma_floor=chroma_arena;
+#if NP_GPU_DMA_RASTER_SPLIT
+    extern char np_dma_raster_cost[];
+    chroma_floor=(uintptr_t)np_dma_raster_cost+4;
+#endif
+    if((chroma&15) || chroma_arena<0xf0000 || chroma_arena>0xf6800 ||
+       chroma<chroma_floor || chroma_end<=chroma || chroma_end>chroma_arena+2048)return -1;
+
+    extern void np_mdec_rle_general(void),np_mdec_rle_general_end(void);
+    const uintptr_t rle=(uintptr_t)np_mdec_rle_general;
+    const uintptr_t rle_end=(uintptr_t)np_mdec_rle_general_end;
+    if((rle&3) || rle<(uintptr_t)np_mdec_fast_end || rle_end<=rle || rle_end>0xf4cd0)return -1;
+
+
     extern void np_mdec_color_fast(void),np_mdec_color_end(void);
     extern char np_video_command_records[];
     const uintptr_t color=(uintptr_t)np_mdec_color_fast;
