@@ -9,6 +9,13 @@
 #include "native.h"
 #include "worker.h"
 #include "disc_tail.h"
+#if NP_CD_SWAP
+#include "psxcore_discset.h"
+static NpFileDiscSet disc_set,disc_candidate;
+static unsigned char disc_header[NP_FILE_HEADER_HASH_BYTES];
+static unsigned disc_opened;
+static int register_disc_set(const void *arg,unsigned n);
+#endif
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
@@ -61,6 +68,11 @@ static int enter(void) {
 static int leave(int result){SignalSema(lock);return result;}
 static int path(unsigned unit,const char *name,char out[NP_FILE_PATH_BYTES+8]) {
     char relative[NP_FILE_PATH_BYTES];
+#if NP_CD_SWAP
+    if(disc_set.count) {
+        if(np_file_disc_set_route(&disc_set,unit,name,cards,relative,sizeof(relative)))return -EACCES;
+    } else
+#endif
     if(np_file_route(unit,name,disc,cards,relative,sizeof(relative)))return -EACCES;
     const char *selected=unit==1?save_root:root;
     size_t r=strlen(selected),n=strlen(relative);
@@ -124,8 +136,13 @@ static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode
     if(canonical && flags==FIO_O_RDWR) {
         writing=0;flags=FIO_O_RDONLY;
     } else if(writing) {
+        /* The pinned native save worker uses O_RDWR|O_CREAT|O_TRUNC (0x603)
+         * for its backup, although it only writes. Keep the backing descriptor
+         * write-only and admit this exact mode only for the two backups. */
+        int backup_flags=FIO_O_WRONLY|FIO_O_CREAT|FIO_O_TRUNC;
         if(f->unit!=1 || (strcmp(name,"/ps1emu/card0.bak") && strcmp(name,"/ps1emu/card1.bak")) ||
-           flags!=(FIO_O_WRONLY|FIO_O_CREAT|FIO_O_TRUNC))return -EROFS;
+           (flags!=backup_flags && flags!=(FIO_O_RDWR|FIO_O_CREAT|FIO_O_TRUNC)))return -EROFS;
+        flags=backup_flags;
     } else if(flags!=FIO_O_RDONLY)return -EROFS;
     e=enter();if(e)return e;
     if(writing && save_failed)return leave(-EIO);
@@ -133,6 +150,18 @@ static int execute_bridge_open(iop_file_t *f,const char *name,int flags,int mode
     int fd=iomanX_open(target,flags,mode);
     if(fd>=0) {
         if(fd>INT_MAX/2-1){iomanX_close(fd);return leave(-EOVERFLOW);}
+#if NP_CD_SWAP
+        if(f->unit==0 && disc_set.count) {
+            unsigned slot;const NpFileDiscEntry *entry=NULL;iox_stat_t st;
+            if(!np_file_disc_slot(name,&slot))entry=np_file_disc_entry(&disc_set,slot);
+            if(!entry || iomanX_getstat(target,&st)<0 || !FIO_S_ISREG(st.mode) || st.hisize ||
+               st.size!=entry->image_bytes || iomanX_read(fd,disc_header,sizeof(disc_header))!=sizeof(disc_header) ||
+               np_file_disc_entry_check(entry,disc_header,sizeof(disc_header)) || iomanX_lseek64(fd,0,0)!=0) {
+                iomanX_close(fd);return leave(-EIO);
+            }
+        }
+        if(f->unit==0)disc_opened=1;
+#endif
         f->privdata=(void *)(((uintptr_t)(fd+1)<<1)|(unsigned)writing);
         if(f->unit==0 && !strcmp(bindings[0].driver,"usb"))disc_read_open(fd);
         if(writing)++writers;
@@ -254,6 +283,14 @@ static int execute_bridge_rename(iop_file_t *f,const char *old,const char *newna
     ++replacements;return leave(0);
 }
 static int execute_bridge_devctl(iop_file_t *f,const char *name,int cmd,void *arg,unsigned arglen,void *buffer,unsigned size) {
+#if NP_CD_SWAP
+    if((unsigned)cmd==NP_FILE_CTL_DISC_SET) {
+        /* fileXio's server may supply its scratch output pointer even when
+         * the requested output length is zero. Only the length matters. */
+        if(f->unit || !name || *name || size)return -EINVAL;
+        return register_disc_set(arg,arglen);
+    }
+#endif
     (void)arg;
     if(f->unit!=1 || !name || *name || arglen)return -EINVAL;
     if((unsigned)cmd==NP_FILE_CTL_FLUSH)return execute_bridge_sync(f,name,0);
@@ -399,6 +436,42 @@ static int bind_device(const char *expected_driver,unsigned expected_device) {
     }
     removed=0;save_failed=0;return 0;
 }
+#if NP_CD_SWAP
+/* Called only on the dedicated worker, before any disc handle is published.
+ * Copy/validate the borrowed descriptor and every image before committing.
+ * No backing file or save destination is modified. */
+static int register_disc_set(const void *arg,unsigned n) {
+    if(!arg || n!=sizeof(disc_candidate))return -EINVAL;
+    int error=enter();if(error)return error;
+    if(disc_opened || disc_set.count || writers)return leave(-EBUSY);
+    memcpy(&disc_candidate,arg,n);
+    unsigned backend=!strcmp(expected_save_driver,"ata")?NP_FILE_BACKEND_ATA:NP_FILE_BACKEND_USB;
+    unsigned char binding[32];
+    np_file_disc_save_binding(cards,backend,expected_save_device,save_volume,binding);
+    const char *invalid=np_file_disc_set_check(&disc_candidate,n,disc,disc_volume,binding);
+    if(invalid){printf("PSXCORE disc-set=refused stage=%s\n",invalid);return leave(-EINVAL);}
+    for(unsigned i=0;i<disc_candidate.count;++i) {
+        const NpFileDiscEntry *entry=&disc_candidate.entries[i];
+        char target[NP_FILE_PATH_BYTES+8];size_t rn=strlen(root),pn=strlen(entry->path);
+        memcpy(target,root,rn);memcpy(target+rn,entry->path,pn+1);
+        DiskBinding binding_check;
+        error=bind_path(target,bindings[0].driver,bindings[0].device,&binding_check);
+        if(error || binding_check.drive!=bindings[0].drive)return leave(-ENODEV);
+        iox_stat_t before,after;
+        error=iomanX_getstat(target,&before);
+        if(error<0 || !FIO_S_ISREG(before.mode) || before.hisize || before.size!=entry->image_bytes){
+            printf("PSXCORE disc-set=refused stage=stat slot=%u result=%d\n",i,error);return leave(-EINVAL);
+        }
+        int fd=iomanX_open(target,FIO_O_RDONLY,0);if(fd<0)return leave(fd);
+        int got=iomanX_read(fd,disc_header,sizeof(disc_header));int closed=iomanX_close(fd);
+        if(got!=sizeof(disc_header) || closed<0 || np_file_disc_entry_check(entry,disc_header,sizeof(disc_header)))return leave(-EIO);
+        error=iomanX_getstat(target,&after);
+        if(error<0 || after.size!=before.size || after.hisize!=before.hisize ||
+           memcmp(after.mtime,before.mtime,sizeof(after.mtime)))return leave(-EIO);
+    }
+    memcpy(&disc_set,&disc_candidate,sizeof(disc_set));return leave(0);
+}
+#endif
 static int root_valid(const char *selected) {
     return strlen(selected)==6 && !strncmp(selected,"mass",4) && selected[4]>='0' && selected[4]<='9' && selected[5]==':';
 }
@@ -429,6 +502,9 @@ int _start(int argc,char **argv) {
     int same=!strcmp(root,save_root);
     if(same && (strcmp(expected_driver,expected_save_driver) || expected_device!=expected_save_device || memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
     if(!same && (!np_file_volume_id_present(disc_volume) || !np_file_volume_id_present(save_volume) || !memcmp(disc_volume,save_volume,16)))return MODULE_NO_RESIDENT_END;
+#if NP_CD_SWAP
+    memset(&disc_set,0,sizeof(disc_set));disc_opened=0;
+#endif
     iop_sema_t sema={0};sema.initial=1;sema.max=1;lock=CreateSema(&sema);
     if(lock<0)return MODULE_NO_RESIDENT_END;
     if(np_file_worker_start()<0)return reject_start(0);

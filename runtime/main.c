@@ -8,17 +8,11 @@
 #include "startup_diag.h"
 #include "config.h"
 #include "saveguards.h"
-#ifndef NP_CD_CONTEXT
-#define NP_CD_CONTEXT 0
+#if NP_CD_SWAP
+#include "cdswap_patch.h"
+#if NP_IGR_RETURN
+#error "Disc swapping and the experimental IGR return share private memory"
 #endif
-#if NP_CD_CONTEXT!=0 && NP_CD_CONTEXT!=1
-#error "NP_CD_CONTEXT must be 0 or 1"
-#endif
-#if NP_CD_CONTEXT
-#if !NP_CD_GATE || NP_CD_RENDEZVOUS || NP_IGR_RETURN
-#error "CD context observations require CD gate code and exclusive diagnostic hooks"
-#endif
-#include "cdcontext.h"
 #endif
 #ifndef NP_IGR_WAIT
 #define NP_IGR_WAIT 0
@@ -1232,15 +1226,18 @@ int main(int argc,char **argv) {
     trace("PSXCORE igr-return=experimental trigger=native-menu saves=user-owned status=%08x bytes=24\n",
         NP_IGR_LOADER_STATUS);
 #endif
-#if NP_CD_CONTEXT
-    if(!native){error="cd-context-native";goto rejected;}
-    error=np_runtime_cd_context_plan((void *)NP_BOOT_STAGE,3166988,&elf,
-        (uintptr_t)np_cd_gate_begin,(uintptr_t)np_cd_gate_code_end,(uintptr_t)np_cd_gate_end,
-        (uintptr_t)&np_cd_gate,(uintptr_t)np_cd_context_boot,(uintptr_t)np_cd_context_write,
-        (uintptr_t)np_cd_context_tail,(uintptr_t)np_cd_context,(uintptr_t)np_cd_context_end,&patch_set);
-    if(error)goto rejected;
-    trace("PSXCORE cd-context=minimal-frame-observations record=%08x bytes=768 gate=unarmed\n",
-        (unsigned)(uintptr_t)np_cd_context);
+#if NP_CD_SWAP
+    if(native && np_file_disc_set_selected()) {
+        error=np_runtime_cd_swap_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            (uintptr_t)np_cd_swap_context_boot,(uintptr_t)np_cd_swap_runtime_tail,
+            (uintptr_t)np_cd_swap_runtime_code_end,(uintptr_t)np_cd_swap_runtime_end,
+            (uintptr_t)np_cd_swap_context,(uintptr_t)np_cd_swap_context_end,
+            (uintptr_t)&np_cd_swap_runtime,(uintptr_t)&np_cd_reopen,(uintptr_t)np_cd_swap_input,
+            (uintptr_t)np_cd_swap_begin,(uintptr_t)np_cd_swap_end,(uintptr_t)&np_cd_swap,
+            (uintptr_t)np_cd_swap_tocs,&patch_set);
+        if(error)goto rejected;
+        trace("PSXCORE disc-swap=native shortcut=L2+R2+Select+direction\n");
+    }
 #endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}

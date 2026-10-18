@@ -8,13 +8,7 @@ EE_OBJS += igrwait.o
 EE_OBJS += igrquit.o
 EE_OBJS += cdobserve.o
 EE_OBJS += cdrendezvous.o
-EE_OBJS += cdprotocol.o
-EE_OBJS += cdresponse.o cdresponse_native.o
-EE_OBJS += cdcontrol.o
-EE_OBJS += cdsession.o
-EE_OBJS += cdpark.o
-EE_OBJS += cdgate.o cdgate_native.o
-EE_OBJS += cdcontext.o
+EE_OBJS += cdswap_context.o cdreopen.o cdswap_native.o cdswap.o cdswap_input.o
 EE_OBJS += cdreadstatus.o
 EE_OBJS += clutrefresh.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
@@ -47,14 +41,11 @@ ifeq ($(NP_IGR_RETURN),1)
 EE_OBJS += igrloader_blob.o igr.o
 endif
 NP_CD_OBSERVE ?= 0
+NP_CD_SWAP ?= 1
 NP_CD_RENDEZVOUS ?= 0
-NP_CD_PROTOCOL ?= 0
-NP_CD_RESPONSE ?= 0
-NP_CD_CONTROL ?= 0
-NP_CD_SESSION ?= 0
-NP_CD_PARK ?= 0
-NP_CD_GATE ?= 0
-NP_CD_CONTEXT ?= 0
+ifeq ($(NP_CD_SWAP),1)
+EE_OBJS += discset.o
+endif
 EE_CFLAGS += -DNP_MEMORY_ACCESS_ADAPTER=$(NP_MEMORY_ACCESS_ADAPTER)
 EE_CFLAGS += -DNP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
 EE_CFLAGS += -DNP_MEMORY_RAM_FASTPATH=$(NP_MEMORY_RAM_FASTPATH)
@@ -79,34 +70,18 @@ EE_CFLAGS += -DNP_IGR_QUIT_PROBE=$(NP_IGR_QUIT_PROBE)
 EE_CFLAGS += -DNP_IGR_RETURN=$(NP_IGR_RETURN)
 EE_CFLAGS += -DNP_CD_OBSERVE=$(NP_CD_OBSERVE)
 EE_CFLAGS += -DNP_CD_RENDEZVOUS=$(NP_CD_RENDEZVOUS)
-EE_CFLAGS += -DNP_CD_PROTOCOL=$(NP_CD_PROTOCOL)
-EE_CFLAGS += -DNP_CD_RESPONSE=$(NP_CD_RESPONSE)
-EE_CFLAGS += -DNP_CD_CONTROL=$(NP_CD_CONTROL)
-EE_CFLAGS += -DNP_CD_SESSION=$(NP_CD_SESSION)
-EE_CFLAGS += -DNP_CD_PARK=$(NP_CD_PARK)
-EE_CFLAGS += -DNP_CD_GATE=$(NP_CD_GATE)
-EE_CFLAGS += -DNP_CD_CONTEXT=$(NP_CD_CONTEXT)
-cdcontext.o: cdcontext.S
+EE_CFLAGS += -DNP_CD_SWAP=$(NP_CD_SWAP)
+cdswap.o cdreopen.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
+cdswap.o: cdswap.c cdswap.h cdreopen.h cdswap_runtime.h
+cdreopen.o: cdreopen.c cdreopen.h ../../include/psxcore_cdtoc.h
+file_storage.o: cdswap.h cdswap_runtime.h
+main.o: cdswap_patch.h cdswap.h cdswap_bindings.h cdswap_runtime.h
+cdswap_input.o: cdswap_input.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-cdgate.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-cdgate.o: cdgate.c cdgate.h cdpark.h
-cdgate_native.o: cdgate_native.S
+cdswap_native.o: cdswap_native.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-cdpark.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-cdpark.o: cdpark.c cdpark.h
-cdsession.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-cdsession.o: cdsession.c cdsession.h cdcontrol.h cdresponse.h cdprotocol.h
-cdcontrol.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-cdcontrol.o: cdcontrol.c cdcontrol.h cdprotocol.h cdresponse.h
-cdresponse.o: EE_CFLAGS += -Os -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-cdresponse.o: cdresponse.c cdresponse.h cdprotocol.h
-cdresponse_native.o: cdresponse_native.S
+cdswap_context.o: cdswap_context.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-cdprotocol.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
-ifeq ($(NP_CD_RESPONSE),1)
-cdprotocol.o: EE_CFLAGS += -Os
-endif
-cdprotocol.o: cdprotocol.c cdprotocol.h
 memoryaccess.o: EE_CFLAGS += -G0 -fno-jump-tables
 codeguard.o: EE_CFLAGS += -G0 -fno-jump-tables -fno-builtin -fno-tree-loop-distribute-patterns
 codeguard.o: codeguard.c codeguard.h

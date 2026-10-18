@@ -453,6 +453,33 @@ static const char *locate(NpFileLaunchRequest *r,const char *checked_path) {
         (unsigned)f->image_bytes,f->serial[0]?f->serial:"unidentified",np_file_volume_id_present(r->disc_volume)?"verified":"unbound");
     return NULL;
 }
+#if NP_CD_SWAP
+/* Binary frontend output only; legacy single-disc requests keep their ABI. */
+#include "psxcore_discset.h"
+#if NP_CD_SWAP
+#include "cdswap.h"
+#include "cdswap_runtime.h"
+static const char *prepare_swap(const NpFileDiscSet *set) {
+    memset(&np_cd_swap,0,sizeof(np_cd_swap));
+    memset(np_cd_swap_tocs,0,sizeof(np_cd_swap_tocs));
+    if(set->count<2)return "disc-swap-count";
+    for(unsigned slot=0;slot<set->count;++slot) {
+        const NpFileDiscEntry *entry=np_file_disc_entry(set,slot);
+        char path[NP_FILE_PATH_BYTES+8];unsigned char header[NP_FILE_HEADER_HASH_BYTES];
+        if(!entry || join(path,sizeof(path),mounted,entry->path))return "disc-swap-path";
+        int fd=fileXioOpen(path,FIO_O_RDONLY,0);if(fd<0)return "disc-swap-open";
+        int error=read_all(fd,header,sizeof(header));int closed=fileXioClose(fd);
+        if(error || closed<0 || np_file_disc_entry_check(entry,header,sizeof(header)))return "disc-swap-header";
+        memcpy(np_cd_swap_tocs[slot],header,1024);np_cd_swap.sectors[slot]=entry->sectors;
+    }
+    np_cd_swap.magic=NP_CD_SWAP_MAGIC;np_cd_swap.version=1;np_cd_swap.bytes=sizeof(np_cd_swap);
+    np_cd_swap.count=set->count;np_cd_swap.ready=1;
+    return NULL;
+}
+#endif
+static char disc_set_path[NP_FILE_PATH_BYTES];
+static NpFileDiscSet launch_disc_set;
+#endif
 /* POPStarter selects a VCD path in the newly initialized native mass stack.
  * Recheck the existing measured VCD identity, not the old USB location.
  * Exactly one match is required; saves keep their path/marker constraints. */
@@ -513,7 +540,17 @@ static int device_number(const char *number,uint32_t *out) {
     if((number[0]!='0' && number[0]!='1') || number[1])return 0;
     *out=(uint32_t)(number[0]-'0');return 1;
 }
+int np_file_disc_set_selected(void) {
+#if NP_CD_SWAP
+    return disc_set_path[0]!=0;
+#else
+    return 0;
+#endif
+}
 const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
+#if NP_CD_SWAP
+    disc_set_path[0]=0;
+#endif
     np_file_probe_only=0;mounted[0]=save_mounted[0]=0;
     np_file_launch_init(r);selected_backend=NP_FILE_BACKEND_ATA;selected_save_backend=0;
     const char *selected=NULL,*request_path=NULL,*save_root=NULL;
@@ -522,6 +559,13 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
     int disc_id_seen=0,save_id_seen=0,card_seen[2]={0};
     for(int i=1;i<argc;++i) {
         if(!strcmp(argv[i],"--file") && i+1<argc && !selected && !request_path)selected=argv[++i];
+#if NP_CD_SWAP
+        else if(!strcmp(argv[i],"--disc-set") && i+1<argc && !disc_set_path[0]) {
+            const char *p=argv[++i];
+            if(!np_file_path_valid(p,sizeof(disc_set_path),1))return "disc-set-path";
+            strcpy(disc_set_path,p);
+        }
+#endif
         else if(!strcmp(argv[i],"--file-request") && i+1<argc && !selected && !request_path)request_path=argv[++i];
         else if(!strcmp(argv[i],"--probe-synthetic"))np_file_probe_only=1;
         else if((!strcmp(argv[i],"--card0") || !strcmp(argv[i],"--card1")) && i+1<argc) {
@@ -664,6 +708,25 @@ const char *np_file_bridge_start(const NpFileLaunchRequest *r) {
         save_mounted,np_file_backend_driver(f->saves.backend),save_number,disc_id,save_id};
     for(unsigned i=0;i<11;++i){unsigned length=strlen(values[i])+1;if(length>sizeof(args)-n)return "file-bridge-arguments";memcpy(args+n,values[i],length);n+=length;}
     if(load("psxcore_filebridge",psxcore_filebridge_irx,size_psxcore_filebridge_irx,args,n))return "file-bridge-load";
+#if NP_CD_SWAP
+    if(disc_set_path[0]) {
+        char path[NP_FILE_PATH_BYTES+8];unsigned char binding[32],extra;
+        if(join(path,sizeof(path),mounted,disc_set_path))return "disc-set-path";
+        int fd=fileXioOpen(path,FIO_O_RDONLY,0);if(fd<0)return "disc-set-open";
+        int read_error=read_all(fd,&launch_disc_set,sizeof(launch_disc_set));
+        if(!read_error && fileXioRead(fd,&extra,1)!=0)read_error=-1;
+        int closed=fileXioClose(fd);if(read_error || closed<0)return "disc-set-read";
+        np_file_disc_save_binding(r->cards,r->saves.backend,r->saves.device,r->save_volume,binding);
+        error=np_file_disc_set_check(&launch_disc_set,sizeof(launch_disc_set),r->disc_path,r->disc_volume,binding);
+        if(error)return error;
+        if(fileXioDevctl("pfs0:",NP_FILE_CTL_DISC_SET,&launch_disc_set,sizeof(launch_disc_set),NULL,0)<0)return "disc-set-register";
+#if NP_CD_SWAP
+        error=prepare_swap(&launch_disc_set);if(error)return error;
+        storage_trace("PSXCORE disc-swap=manual targets=%u armed=%u shortcut=L2+R2+Select+direction\n",np_cd_swap.count,np_cd_swap_runtime.enabled);
+#endif
+        storage_trace("PSXCORE disc-set=registered count=%u initial=%u shared-cards=unchanged\n",launch_disc_set.count,launch_disc_set.initial);
+    }
+#endif
     if(np_file_probe_only)return NULL;
     uint32_t state[4];
     np_startup_operation("Check bridge save flush and readiness");

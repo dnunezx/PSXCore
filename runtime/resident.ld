@@ -1,32 +1,32 @@
 /* Original resident layout; included inside the SDK SECTIONS block. */
-/* Dormant control experiments only. Outside the checked IGR loader's maximum
- * 0x84000..0xe7000 image and below the existing 0xf0000 helpers. Activation
- * still requires revision/segment/stack/overlap checks and live persistence.
- * These CD arenas overlap IGR's private return stack; cdresponse.c rejects
- * that feature combination. They are NOT live-safe resident allocations. */
+/* Native swap arenas. The planner checks firmware, segment overlap and
+ * main-thread ownership; the experimental IGR return cannot share them. */
 .cd_control 0x000e8000: {
- KEEP(*(._psxcore_cd_control.text))
- KEEP(*(._psxcore_cd_response_receipt.text))
+ np_cd_swap_begin = .;
+ KEEP(*(._psxcore_cd_swap.text))
+ KEEP(*(._psxcore_cd_swap.data))
+ np_cd_swap_end = .;
 } :resident
-ASSERT(. <= 0x000e9000, "runtime experimental CD control arena overflow")
+ASSERT(. <= 0x000e9000, "runtime CD control arena overflow")
 .cd_session 0x000e9000: {
- KEEP(*(._psxcore_cd_session.text))
+ KEEP(*(._psxcore_cd_reopen.text))
+ KEEP(*(._psxcore_cd_reopen.data))
 } :resident
-ASSERT(. <= 0x000ea000, "runtime experimental CD session arena overflow")
+ASSERT(. <= 0x000ea000, "runtime CD transport arena overflow")
 .cd_park 0x000ea000: {
- KEEP(*(._psxcore_cd_park.text))
+ KEEP(*(._psxcore_cd_swap.tocs))
 } :resident
-ASSERT(. <= 0x000eb000, "runtime experimental CD parking arena overflow")
+ASSERT(. <= 0x000eb000, "runtime CD TOC arena overflow")
 .cd_gate 0x000eb000: {
- KEEP(*(._psxcore_cd_gate.entry))
- KEEP(*(._psxcore_cd_gate.text))
+ KEEP(*(._psxcore_cd_swap_runtime.entry))
+ KEEP(*(._psxcore_cd_swap_runtime.text))
  . = ALIGN(16);
- KEEP(*(._psxcore_cd_gate.code_end))
- KEEP(*(._psxcore_cd_gate.data))
+ KEEP(*(._psxcore_cd_swap_runtime.code_end))
+ KEEP(*(._psxcore_cd_swap_runtime.data))
  . = ALIGN(16);
- KEEP(*(._psxcore_cd_gate.end))
+ KEEP(*(._psxcore_cd_swap_runtime.end))
 } :resident
-ASSERT(. <= 0x000ec000, "runtime experimental CD gate arena overflow")
+ASSERT(. <= 0x000ec000, "runtime CD scheduler arena overflow")
 .diagnostic 0x000f0000: {
  KEEP(*(._psxcore_hooks))
  KEEP(*(._psxcore_memory))
@@ -36,8 +36,6 @@ ASSERT(. <= 0x000ec000, "runtime experimental CD gate arena overflow")
 ASSERT(. <= 0x000f7000, "runtime diagnostic hooks overflow")
 .return_delay 0x000f7000: {
  KEEP(*(._psxcore_return_delay))
- /* Default-off helpers use only the existing bounded resident gaps. */
- KEEP(*(._psxcore_cd_response_pool.text))
 } :resident
 ASSERT(. <= 0x000f7800, "runtime return-load helpers overflow")
 .gte_color 0x000f7800: {
@@ -66,8 +64,6 @@ ASSERT(. <= 0x000f8000, "runtime CD read status helper overflow")
  KEEP(*(._psxcore_igr_quit))
  KEEP(*(._psxcore_cd_observe))
  KEEP(*(._psxcore_cd_rendezvous))
- KEEP(*(._psxcore_cd_protocol.text))
- KEEP(*(._psxcore_cd_response.text))
  . = ALIGN(16);
  np_reverb_exact_start = .;
  KEEP(*(._psxcore_reverb_exact))

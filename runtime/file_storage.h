@@ -4,6 +4,8 @@
 #include "psxcore_file.h"
 int np_file_storage_init(int reset);
 int np_file_storage_init_pops(void);
+/* True only for an explicit, validated-path disc-set launch request. */
+int np_file_disc_set_selected(void);
 const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *out);
 const char *np_file_reopen(NpFileLaunchRequest *request);
 const char *np_file_bridge_start(const NpFileLaunchRequest *request);
