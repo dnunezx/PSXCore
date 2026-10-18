@@ -7,6 +7,16 @@
  * Final multiply operands restore both native HI/LO units before returning. */
 #include <stdint.h>
 
+/* Read a signed halfword with the native instruction. The uint32_t result
+ * retains the same low word while the instruction supplies sign extension. */
+static __inline__ __attribute__((always_inline)) uint32_t np_reverb_read_s16(uint32_t address) {
+    uint32_t value;
+    __asm__ volatile("lh %0,%1" : "=r"(value)
+        : "m"(*(volatile const int16_t *)(uintptr_t)address));
+    return value;
+}
+
+
 /* PMAXW/PMINW perform signed word comparisons. Borrow a volatile wide
  * temporary, then return through a scalar instruction so callee registers'
  * upper 64-bit lanes retain the native ABI. Neither operation changes HI/LO. */
@@ -113,14 +123,14 @@ r3=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2460);
 s28=r8;
 r4=r4-r3;
 r2=r2+r5;
-r12=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)462);
+r12=np_reverb_read_s16(context+(uint32_t)462);
 r4=r4+r2;
 r24=(int32_t)r4>>15;
 r5=sample_ptr;
 s18=r12;
-r3=(uint32_t)*(volatile int16_t *)(uintptr_t)(r8+(uint32_t)0);
+r3=np_reverb_read_s16(r8+(uint32_t)0);
 r8=0u+(uint32_t)32767;
-r14=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)508);
+r14=np_reverb_read_s16(context+(uint32_t)508);
 s10=r8;
 {uint32_t x=r3,y=r12;mx0=x;my0=y;r3=x*y;}
 {uint32_t x=r24,y=r14;mx0=x;my0=y;r4=x*y;}
@@ -128,12 +138,12 @@ r14=0u+(uint32_t)32767;
 r15=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2620);
 s24=r15;
 r3=(int32_t)r3>>15;
-r2=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)452);
+r2=np_reverb_read_s16(context+(uint32_t)452);
 s34=r4;
 s1c=r2;
 r9=r9-r2;
 r7=s34;
-r6=(uint32_t)*(volatile int16_t *)(uintptr_t)(r15+(uint32_t)0);
+r6=np_reverb_read_s16(r15+(uint32_t)0);
 s20=r9;
 r24=(int32_t)r7>>15;
 r3=r24+r3;
@@ -185,9 +195,9 @@ s44=r4;
 r3=irq_address^r9;
 r6=s18;
 if(r3==0)irq_address=0u;
-r2=(uint32_t)*(volatile int16_t *)(uintptr_t)(r5+(uint32_t)0);
+r2=np_reverb_read_s16(r5+(uint32_t)0);
 r10=r10+(uint32_t)2;
-r5=(uint32_t)*(volatile int16_t *)(uintptr_t)(r11+(uint32_t)0);
+r5=np_reverb_read_s16(r11+(uint32_t)0);
 {uint32_t x=r2,y=r6;mx0=x;my0=y;r2=x*y;}
 r6=0u+(uint32_t)32767;
 r7=s20;
@@ -246,17 +256,17 @@ r8=r2<r14;
 r14=s3c;
 r12=r2<r3;
 r15=s18;
-r3=(uint32_t)*(volatile int16_t *)(uintptr_t)(r7+(uint32_t)0);
+r3=np_reverb_read_s16(r7+(uint32_t)0);
 if(r14!=0)r10=work_start;
 r7=s44;
 r5=s24;
 {uint32_t x=r3,y=r15;mx0=x;my0=y;r3=x*y;}
 r14=s28;
-r4=(uint32_t)*(volatile int16_t *)(uintptr_t)(r7+(uint32_t)0);
+r4=np_reverb_read_s16(r7+(uint32_t)0);
 if(r19!=0)r5=work_start;
 r15=s20;
 if(r12!=0)r14=work_start;
-r2=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)510);
+r2=np_reverb_read_s16(context+(uint32_t)510);
 r3=(int32_t)r3>>15;
 r7=s40;
 {uint32_t x=r4,y=r15;mx0=x;my0=y;r4=x*y;}
@@ -309,7 +319,7 @@ sa4=r5;
 if(*(volatile uint16_t *)(uintptr_t)0x700004fa&128u)*(volatile uint16_t *)(uintptr_t)(r20+(uint32_t)0)=(uint16_t)r6;
 r20=r20+(uint32_t)2;
 r15=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2540);
-r3=(uint32_t)*(volatile int16_t *)(uintptr_t)(r24+(uint32_t)0);
+r3=np_reverb_read_s16(r24+(uint32_t)0);
 r6=s18;
 r7=s44;
 {uint32_t x=r3,y=r6;mx0=x;my0=y;r3=x*y;}
@@ -317,7 +327,7 @@ r12=s48;
 r2=irq_address^r7;
 r7=0u+(uint32_t)-32768;
 if(r2==0)irq_address=0u;
-r4=(uint32_t)*(volatile int16_t *)(uintptr_t)(r11+(uint32_t)0);
+r4=np_reverb_read_s16(r11+(uint32_t)0);
 r2=irq_address^r11;
 r11=r11+(uint32_t)2;
 if(r2==0)irq_address=0u;
@@ -364,23 +374,23 @@ r4=s5c;
 s44=r12;
 r4=r4+(uint32_t)2;
 r12=s48;
-r14=(uint32_t)*(volatile int16_t *)(uintptr_t)(r8+(uint32_t)0);
+r14=np_reverb_read_s16(r8+(uint32_t)0);
 r8=r8+(uint32_t)2;
 r12=r12+(uint32_t)2;
 s60=r14;
 r14=irq_address^r9;
-r15=(uint32_t)*(volatile int16_t *)(uintptr_t)(r5+(uint32_t)0);
+r15=np_reverb_read_s16(r5+(uint32_t)0);
 r5=r5+(uint32_t)2;
 s68=r15;
-r2=(uint32_t)*(volatile int16_t *)(uintptr_t)(r2+(uint32_t)0);
-r3=(uint32_t)*(volatile int16_t *)(uintptr_t)(r6+(uint32_t)0);
+r2=np_reverb_read_s16(r2+(uint32_t)0);
+r3=np_reverb_read_s16(r6+(uint32_t)0);
 r6=r6+(uint32_t)2;
 s70=r2;
 r2=8585216u;
 s5c=r4;
 r2=r2+(uint32_t)-18050;
 r21=r2<r20;
-r7=(uint32_t)*(volatile int16_t *)(uintptr_t)(r9+(uint32_t)0);
+r7=np_reverb_read_s16(r9+(uint32_t)0);
 r9=r9+(uint32_t)2;
 s48=r12;
 if(r21!=0)r20=work_start;
@@ -463,31 +473,31 @@ r4=s84;
 r2=irq_address^r4;
 sc0=r12;
 if(r2==0)irq_address=0u;
-r8=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)454);
+r8=np_reverb_read_s16(context+(uint32_t)454);
 sbc=r12;
 r6=s60;
-r14=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)456);
+r14=np_reverb_read_s16(context+(uint32_t)456);
 sc4=r12;
 {uint32_t x=r6,y=r8;mx0=x;my0=y;r11=x*y;}
 r12=s80;
-r5=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)458);
+r5=np_reverb_read_s16(context+(uint32_t)458);
 r2=s7c;
 s58=r5;
 r11=(int32_t)r11>>15;
 r5=s68;
-r4=(uint32_t)*(volatile int16_t *)(uintptr_t)(r12+(uint32_t)0);
+r4=np_reverb_read_s16(r12+(uint32_t)0);
 r12=r12+(uint32_t)2;
-r15=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)460);
+r15=np_reverb_read_s16(context+(uint32_t)460);
 s80=r12;
 {uint32_t x=r4,y=r8;mx1=x;my1=y;r4=x*y;}
 r12=s84;
-r6=(uint32_t)*(volatile int16_t *)(uintptr_t)(r2+(uint32_t)0);
+r6=np_reverb_read_s16(r2+(uint32_t)0);
 r2=r2+(uint32_t)2;
 s7c=r2;
 {uint32_t x=r5,y=r15;mx0=x;my0=y;r2=x*y;}
 r7=s70;
 {uint32_t x=r6,y=r15;mx0=x;my0=y;r6=x*y;}
-r5=(uint32_t)*(volatile int16_t *)(uintptr_t)(r12+(uint32_t)0);
+r5=np_reverb_read_s16(r12+(uint32_t)0);
 r12=r12+(uint32_t)2;
 s84=r12;
 {uint32_t x=r7,y=r14;mx0=x;my0=y;r10=x*y;}
@@ -507,9 +517,9 @@ s94=r7;
 r3=(int32_t)r3>>15;
 r2=r12+r2;
 r3=r3+r11;
-r9=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)464);
+r9=np_reverb_read_s16(context+(uint32_t)464);
 r4=r4+r6;
-r10=(uint32_t)*(volatile int16_t *)(uintptr_t)(r7+(uint32_t)0);
+r10=np_reverb_read_s16(r7+(uint32_t)0);
 r5=(int32_t)r5>>15;
 s6c=r2;
 {uint32_t x=r10,y=r9;mx0=x;my0=y;r2=x*y;}
@@ -520,7 +530,7 @@ r24=r7+r3;
 r2=(int32_t)r2>>15;
 r12=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2612);
 r24=r24-r2;
-r11=(uint32_t)*(volatile int16_t *)(uintptr_t)(context+(uint32_t)466);
+r11=np_reverb_read_s16(context+(uint32_t)466);
 r2=(int32_t)r14<(int32_t)r24;
 sa0=r12;
 r8=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2596);
@@ -548,7 +558,7 @@ r14=sa0;
 r23=r4+r2;
 r4=s94;
 r8=0u+(uint32_t)32767;
-r6=(uint32_t)*(volatile int16_t *)(uintptr_t)(r14+(uint32_t)0);
+r6=np_reverb_read_s16(r14+(uint32_t)0);
 sa8=r15;
 {uint32_t x=r6,y=r11;mx0=x;my0=y;r3=x*y;}
 r5=s9c;
@@ -586,7 +596,7 @@ r2=sac;
 r24=r6+r5;
 r4=sc0;
 r3=0u+(uint32_t)32767;
-r21=(uint32_t)*(volatile int16_t *)(uintptr_t)(r2+(uint32_t)0);
+r21=np_reverb_read_s16(r2+(uint32_t)0);
 r2=(int32_t)r3<(int32_t)r24;
 r4=np_reverb_clip16(r24);
 r8=(uint32_t)*(volatile uint32_t *)(uintptr_t)(context+(uint32_t)2484);
@@ -628,7 +638,7 @@ r2=sb8;
 r3=irq_address^r6;
 if(r3==0)irq_address=0u;
 {uint32_t x=r23,y=r9;mx0=x;my0=y;r9=x*y;}
-r3=(uint32_t)*(volatile int16_t *)(uintptr_t)(r2+(uint32_t)0);
+r3=np_reverb_read_s16(r2+(uint32_t)0);
 r10=r10+r8;
 r4=sa0;
 r5=r5+r24;
