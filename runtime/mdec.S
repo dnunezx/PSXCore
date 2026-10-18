@@ -58,9 +58,15 @@ np_mdec_dc:
     jr $ra
     nop
 np_mdec_dc_native:
+#if !NP_MEMORY_ACCESS_TRACE
+    j np_mdec_row_bridge
+    nop
+    nop
+#else
     addiu $sp,$sp,-336
     j 0x20d3c0
     sd $s0,256($sp)
+#endif
     .balign 16
 np_mdec_dc_end:
 

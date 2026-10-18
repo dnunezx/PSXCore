@@ -855,7 +855,12 @@ np_video_command_records:
 np_video_worker_written:
     .space 16
 np_video_worker_records:
+#if NP_MDEC_BLOCK_FASTPATH && !NP_MEMORY_ACCESS_TRACE
+#include "mdecrow.S"
+    .org np_video_worker_records+2048,0
+#else
     .space 2048
+#endif
 np_video_unknown_context:
     .word 0
 np_memory_plan_error:

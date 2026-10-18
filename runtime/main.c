@@ -241,6 +241,15 @@ static int install_raster_cost_fastpath(void) {
 extern void np_mdec_fast_begin(void),np_mdec_fast_end(void);
 extern void np_mdec_dc(void),np_mdec_flat(void),np_mdec_rle_dc(void),np_mdec_clear(void);
 static int install_mdec_block_fastpaths(void) {
+#if !NP_MEMORY_ACCESS_TRACE
+    extern void np_mdec_row_exact(void),np_mdec_row_bridge(void),np_mdec_row_end(void);
+    extern char np_video_worker_records[];
+    const uintptr_t row=(uintptr_t)np_mdec_row_exact,row_bridge=(uintptr_t)np_mdec_row_bridge;
+    const uintptr_t row_end=(uintptr_t)np_mdec_row_end,row_arena=(uintptr_t)np_video_worker_records;
+    if((row&15) || row_arena<0xf0000 || row_arena>0xf6800 || row!=row_arena ||
+       row_bridge<=row || (row_bridge&3) || row_end<=row_bridge || row_end>row_arena+2048)return -1;
+#endif
+
     extern void np_mdec_chroma_select(void),np_mdec_chroma_end(void);
     extern char np_video_csr_records[];
     const uintptr_t chroma=(uintptr_t)np_mdec_chroma_select;
