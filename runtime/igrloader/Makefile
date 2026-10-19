@@ -20,7 +20,7 @@ main.o: igrloader_config.h target.h
 igr.o: ../../src/igr.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 linkfile: $(PS2SDK)/ee/startup/linkfile Makefile
-	sed -e 's/ENTRY(__start);/ENTRY(np_igr_loader_entry);/' -e 's/\.text 0x00100000: {/\.text 0x00084000: { KEEP(*(.igr_entry))/' -e 's/_end = \. ;/_end = . ; ASSERT(. <= 0x000e7000, "IGR loader overlaps private stack")/' -e 's/PROVIDE(_stack = -1);/PROVIDE(_stack = 0x000e7000);/' -e 's/PROVIDE(_stack_size = 128 \* 1024);/PROVIDE(_stack_size = 32 * 1024);/' -e 's/PROVIDE(_heap_size = -1);/PROVIDE(_heap_size = 0);/' $< > $@
+	sed -e 's/ENTRY(__start);/ENTRY(np_igr_loader_entry);/' -e 's/\.text 0x00100000: {/\.text 0x00084000: { KEEP(*(.igr_entry))/' -e 's/_end = \. ;/_end = . ; ASSERT(. <= 0x000e0000, "IGR loader overlaps private stack")/' -e 's/PROVIDE(_stack = -1);/PROVIDE(_stack = 0x000e0000);/' -e 's/PROVIDE(_stack_size = 128 \* 1024);/PROVIDE(_stack_size = 32 * 1024);/' -e 's/PROVIDE(_heap_size = -1);/PROVIDE(_heap_size = 0);/' $< > $@
 igrloader.bin: $(EE_BIN)
 	$(EE_OBJCOPY) -O binary $< $@
 igrloader_symbols.h: $(EE_BIN)

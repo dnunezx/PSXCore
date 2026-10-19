@@ -24,12 +24,13 @@ static const char *np_runtime_igr_return_plan(const void *image,size_t bytes,
     };
     if(!image || !elf || !set || !elf->count || elf->count>8 ||
        set->count>NP_PATCH_LIMIT-2)return "igr-return-input";
-    if(entry!=0x84000 || end<=entry || end>0xe7000 || (end&3))return "igr-return-layout";
+    if(entry!=0x84000 || end<=entry || end>0xe0000 || (end&3))return "igr-return-layout";
     for(unsigned i=0;i<sizeof(context)/sizeof(*context);++i) {
         unsigned matches=0;
         for(unsigned j=0;j<elf->count;++j) {
             const NpSegment *s=&elf->segments[j];
-            if(s->address<end && entry<(uint64_t)s->address+s->memsz)return "igr-return-pops-overlap";
+            /* Reserve the whole loader plus its 0xe0000..0xe8000 stack. */
+            if(s->address<0xe8000 && entry<(uint64_t)s->address+s->memsz)return "igr-return-pops-overlap";
             if(context[i][0]>=s->address && (uint64_t)context[i][0]+4<=(uint64_t)s->address+s->filesz) {
                 uint64_t off=(uint64_t)s->offset+context[i][0]-s->address;
                 if(off+4>bytes)return "igr-return-file-bounds";

@@ -31,12 +31,12 @@ NP_RASTER_COST_FASTPATH ?= 1
 NP_PCM_BUFFER_RATE ?= 1
 # Opt-in native decoder window; full decoded-instruction validation stays on.
 NP_POPS_BLOCK_LIMIT ?= 0
-# Diagnostic input/save observations; return remains unavailable.
+# Optional input/save observations, independent of native-menu return.
 NP_IGR_OBSERVE ?= 0
 NP_IGR_WAIT ?= 0
 NP_IGR_PROBE ?= 0
 NP_IGR_QUIT_PROBE ?= 0
-NP_IGR_RETURN ?= 0
+NP_IGR_RETURN ?= 1
 ifeq ($(NP_IGR_RETURN),1)
 EE_OBJS += igrloader_blob.o igr.o
 endif

@@ -45,8 +45,8 @@ NP_IGR_PROBE ?= 0
 export NP_IGR_PROBE
 NP_IGR_QUIT_PROBE ?= 0
 export NP_IGR_QUIT_PROBE
-# Experimental native-menu return. No save drain or new shortcut.
-NP_IGR_RETURN ?= 0
+# Native-menu return. No save drain or new shortcut.
+NP_IGR_RETURN ?= 1
 NP_IGR_RETURN_PATH ?= mc0:/BOOT/BOOT.ELF
 export NP_IGR_RETURN NP_IGR_RETURN_PATH
 NP_CD_OBSERVE ?= 0

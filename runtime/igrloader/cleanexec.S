@@ -33,8 +33,8 @@ np_igr_clean_exec:
     por $25,$zero,$zero
     por $gp,$zero,$zero
     lui $sp,0x000e
-    ori $sp,$sp,0xf000
-    /* The private stack is 0xe7000..0xef000. */
+    ori $sp,$sp,0x8000
+    /* The private stack is 0xe0000..0xe8000, below the disc-swap arenas. */
     por $fp,$zero,$zero
     mthi $zero
     mthi1 $zero

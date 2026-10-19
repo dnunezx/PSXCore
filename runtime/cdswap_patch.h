@@ -18,6 +18,16 @@ static const char *np_runtime_cd_swap_plan(const void *image,size_t bytes,const 
     const uint32_t windows[][2]={{0x20c010,0x20c0d8},{0x2289e0,0x228ad4},{0x237798,0x237814}};
     for(unsigned i=0;i<set->count;++i)for(unsigned j=0;j<3;++j){
         const NpPatch *p=&set->items[i];
+#if NP_IGR_RETURN
+        /* IGR is planned first against the original native input context.
+         * Our transparent interceptor still calls that menu handler. Admit
+         * only its exact confirmed-quit redirect, including the delay slot. */
+        const uint32_t quit_expected[2]={0x0c08b44c,0x24a59708};
+        const uint32_t quit_replacement[2]={0x0c08d8ae,0x24a59708};
+        if(p->address==0x20c0a4 && p->length==8 &&
+           !memcmp(p->expected,quit_expected,8) &&
+           !memcmp(p->replacement,quit_replacement,8))continue;
+#endif
         if(p->address<windows[j][1] && windows[j][0]<(uint64_t)p->address+p->length)return "cd-swap-overlap";
     }
     NpPatchSet candidate=*set;

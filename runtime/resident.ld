@@ -1,6 +1,6 @@
 /* Original resident layout; included inside the SDK SECTIONS block. */
 /* Native swap arenas. The planner checks firmware, segment overlap and
- * main-thread ownership; the experimental IGR return cannot share them. */
+ * main-thread ownership. The IGR loader/stack end at 0xe8000. */
 .cd_control 0x000e8000: {
  np_cd_swap_begin = .;
  KEEP(*(._psxcore_cd_swap.text))

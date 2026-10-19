@@ -10,9 +10,6 @@
 #include "saveguards.h"
 #if NP_CD_SWAP
 #include "cdswap_patch.h"
-#if NP_IGR_RETURN
-#error "Disc swapping and the experimental IGR return share private memory"
-#endif
 #endif
 #ifndef NP_IGR_WAIT
 #define NP_IGR_WAIT 0
@@ -104,7 +101,7 @@ extern NpIgrQuitObservation np_igr_quit_observation;
 extern unsigned char np_igr_loader_blob[];
 extern unsigned int size_np_igr_loader_blob;
 _Static_assert(NP_IGR_LOADER_ENTRY==0x84000,"IGR loader entry");
-_Static_assert(NP_IGR_LOADER_END<=0xe7000,"IGR loader private stack overlap");
+_Static_assert(NP_IGR_LOADER_END<=0xe0000,"IGR loader private stack overlap");
 #endif
 #include <sifrpc.h>
 #include <iopcontrol.h>
@@ -1215,16 +1212,17 @@ int main(int argc,char **argv) {
 #endif
 #endif
 #if NP_IGR_RETURN
-    if(!native){error="igr-return-native";goto rejected;}
-    if(!size_np_igr_loader_blob || size_np_igr_loader_blob>NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY ||
-       NP_IGR_LOADER_STATUS<NP_IGR_LOADER_ENTRY || NP_IGR_LOADER_STATUS+24>NP_IGR_LOADER_END) {
-        error="igr-return-loader-layout";goto rejected;
+    if(native) {
+        if(!size_np_igr_loader_blob || size_np_igr_loader_blob>NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY ||
+           NP_IGR_LOADER_STATUS<NP_IGR_LOADER_ENTRY || NP_IGR_LOADER_STATUS+24>NP_IGR_LOADER_END) {
+            error="igr-return-loader-layout";goto rejected;
+        }
+        error=np_runtime_igr_return_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            NP_IGR_LOADER_ENTRY,NP_IGR_LOADER_END,&patch_set);
+        if(error)goto rejected;
+        trace("PSXCORE igr-return=enabled trigger=native-menu saves=user-owned status=%08x bytes=24\n",
+            NP_IGR_LOADER_STATUS);
     }
-    error=np_runtime_igr_return_plan((void *)NP_BOOT_STAGE,3166988,&elf,
-        NP_IGR_LOADER_ENTRY,NP_IGR_LOADER_END,&patch_set);
-    if(error)goto rejected;
-    trace("PSXCORE igr-return=experimental trigger=native-menu saves=user-owned status=%08x bytes=24\n",
-        NP_IGR_LOADER_STATUS);
 #endif
 #if NP_CD_SWAP
     if(native && np_file_disc_set_selected()) {
@@ -1318,9 +1316,11 @@ int main(int argc,char **argv) {
 #if NP_IGR_RETURN
     /* Install only after the complete POPS plan and storage preparation pass.
      * This disjoint low region survives every validated POPS PT_LOAD range. */
-    memcpy((void *)NP_IGR_LOADER_ENTRY,np_igr_loader_blob,size_np_igr_loader_blob);
-    memset((void *)(NP_IGR_LOADER_ENTRY+size_np_igr_loader_blob),0,
-        NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY-size_np_igr_loader_blob);
+    if(native) {
+        memcpy((void *)NP_IGR_LOADER_ENTRY,np_igr_loader_blob,size_np_igr_loader_blob);
+        memset((void *)(NP_IGR_LOADER_ENTRY+size_np_igr_loader_blob),0,
+            NP_IGR_LOADER_END-NP_IGR_LOADER_ENTRY-size_np_igr_loader_blob);
+    }
 #endif
     trace("PSXCORE runtime=transfer entry=00200008 argc=1 source=external-file-unmodified\n");
     np_startup_done();np_startup_begin(13,"Transfer to POPS attempted; game boot unconfirmed");
