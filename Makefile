@@ -1,19 +1,5 @@
 .DEFAULT_GOAL := library
-ifeq ($(PSXCORE_TESTER),1)
-EE_BIN = build/psxcore-tester.elf
-EE_LINKFILE = build/tester-linkfile
-MODULES = iomanX fileXio sio2man freepad bdm bdmfs_fatfs ps2dev9 ata_bd usbd usbmass_bd
-EE_OBJS = build/tester.o $(addprefix build/,$(addsuffix _irx.o,$(MODULES)))
-EE_CFLAGS = -std=gnu11 -O2 -Wall -Wextra -Werror
-EE_LIBS = -Lbuild -lpsxcore -lpad -lfileXio -liopreboot -lpatches -ldebug
-EE_LDFLAGS = -Wl,-Map=build/psxcore-tester.map
-else
-EE_BIN = build/psxcore-inventory.elf
-MODULES = iomanX fileXio ps2dev9 bdm psxcore_ro ata_bd ps2hdd_bdm ps2fs
-EE_OBJS = build/probe.o build/vcd.o $(addprefix build/,$(addsuffix _irx.o,$(MODULES)))
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
-EE_LIBS = -lfileXio -lpatches -ldebug
-endif
 EE_INCS = -Iinclude
 CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch file card file_patch patch runtime_corrections discmap discset sha1 igr
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
@@ -57,20 +43,9 @@ export NP_CD_SWAP
 NP_CD_RENDEZVOUS ?= 0
 export NP_CD_RENDEZVOUS
 
-.PHONY: all library runtime inventory tester
+.PHONY: all library runtime
 all: library runtime
 library: build/libpsxcore.a
-inventory: $(EE_BIN)
-tester: library
-	$(MAKE) PSXCORE_TESTER=1 build/psxcore-tester.elf
-ifeq ($(PSXCORE_TESTER),1)
-$(EE_BIN): build/tester-linkfile build/libpsxcore.a
-endif
-build/tester-linkfile: $(PS2SDK)/ee/startup/linkfile Makefile | build
-	sed 's/\.text 0x00100000:/.text 0x01000000:/' $< > $@
-	grep -q '.text 0x01000000:' $@
-build/tester.o: src/tester.c Makefile $(wildcard include/*.h) | build
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 NP_BDMA_MODULE_DIR ?= ../psxcore-checks/popstarter-usb-reference-20261011/popsloader-drivers
 runtime: | build
 	$(if $(filter 1,$(NP_IGR_RETURN)),$(MAKE) -C runtime/igrloader,)
@@ -117,17 +92,3 @@ build/core/%.o: src/%.c $(wildcard include/*.h) | build/core
 build/core/compat.o: src/compat_profiles.generated.h
 build/libpsxcore.a: $(CORE_OBJS)
 	$(EE_AR) rcs $@ $^
-build/probe.o: src/probe.c include/psxcore_vcd.h | build
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-build/vcd.o: src/vcd.c include/psxcore_vcd.h | build
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-build/%_irx.c: $(PS2SDK)/iop/irx/%.irx | build
-	$(PS2SDK)/bin/bin2c $< $@ $*_irx
-build/ps2hdd_bdm_irx.c: $(PS2SDK)/iop/irx/ps2hdd-bdm.irx | build
-	$(PS2SDK)/bin/bin2c $< $@ ps2hdd_bdm_irx
-build/psxcore_ro.irx: iop/readonly.c iop/imports.lst iop/irx_imports.h iop/Makefile | build
-	$(MAKE) -C iop
-build/psxcore_ro_irx.c: build/psxcore_ro.irx
-	$(PS2SDK)/bin/bin2c $< $@ psxcore_ro_irx
-build/%_irx.o: build/%_irx.c
-	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@

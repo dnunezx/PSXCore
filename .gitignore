@@ -28,6 +28,15 @@ POPS_IOX.PAK
 /fixtures/
 /captures/
 /logs/
+
+# Standalone tester and inventory tools are maintained on the tester branch.
+/src/tester.c
+/src/probe.c
+/iop/Makefile
+/iop/readonly.c
+/iop/imports.lst
+/iop/irx_imports.h
+
 /runtime/igrloader/linkfile
 /runtime/igrloader/igrloader.map
 /runtime/igrloader/igrloader.nm
