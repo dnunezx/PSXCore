@@ -71,6 +71,14 @@ ASSERT(. <= 0x000f8000, "runtime CD read status helper overflow")
  np_reverb_exact_end = .;
 } :resident
 ASSERT(. <= 0x000ff000, "runtime transfer resident overflow")
+/* The default resident ends below this reserved control helper. Optional
+ * combinations that exhaust the gap must reject instead of overlapping it. */
+.gp1_idle 0x000fec00: {
+ KEEP(*(._psxcore_gp1_idle))
+} :resident
+ASSERT(SIZEOF(.gp1_idle)==0 || ADDR(.resident)+SIZEOF(.resident)<=0x000fec00,
+       "runtime resident overlaps GP1 ownership helper")
+ASSERT(. <= 0x000ff000, "runtime GP1 ownership helper overflow")
 .code_guard 0x000ff000: {
  np_code_guard_resident_start = .;
  KEEP(*(._psxcore_code_guard))

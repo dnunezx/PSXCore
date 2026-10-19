@@ -160,6 +160,9 @@ static int install_interlace_presentation_adapter(void) {
 }
 #endif
 static int queue_word(uint32_t address,uint32_t expected,uint32_t replacement);
+#if NP_GP1_IDLE_CONTROL && !NP_MEMORY_ACCESS_TRACE
+#include "gp1idle_patch.h"
+#endif
 #ifndef NP_POPS_BLOCK_LIMIT
 #define NP_POPS_BLOCK_LIMIT 0
 #endif
@@ -1073,6 +1076,14 @@ int main(int argc,char **argv) {
         trace("PSXCORE gp0-packet-coalesce=%u scalar-write=%u trace=%u experimental=yes\n",
               (unsigned)NP_GP0_PACKET_COALESCE,(unsigned)NP_GP0_SCALAR_WRITE,
               (unsigned)NP_GP0_PACKET_TRACE);
+    }
+#endif
+#if NP_GP1_IDLE_CONTROL && !NP_MEMORY_ACCESS_TRACE
+    if(native) {
+        if(install_gp1_idle_control(&elf)) {
+            trace("PSXCORE rejected=gp1-idle-control-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE gp1-idle-control=1 ownership=parked-worker scope=shared-runtime\n");
     }
 #endif
     if(native) {
