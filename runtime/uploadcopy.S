@@ -23,24 +23,45 @@ np_gp0_upload_copy:
     sltu $v0,$v0,$v1
     beqz $v0,.Luc_fallback
     nop
-    addiu $sp,$sp,-16
+    addiu $sp,$sp,-32
     sq $8,0($sp)
+    sq $9,16($sp)
     move $v1,$a0
-    li $a0,320
-.Lupload_copy:
+    li $a0,3
+    /* Eight initial bytes, then aligned source quadwords. Every source
+     * byte is read once; the last eight bytes use an exact LD as well. */
     ld $v0,0($v1)
-    ld $8,8($v1)
+    lq $8,8($v1)
     pcpyld $s1,$8,$v0
     sq $s1,0($s0)
     addiu $s0,$s0,16
-    addiu $v1,$v1,16
-    addiu $a0,$a0,-4
+    addiu $v1,$v1,24
+    mtsab $zero,8
+.Lupload_copy:
+    /* Three groups of 26 quadwords: 78 middle outputs in native order. */
+    .irp offset,0,32,64,96,128,160,192,224,256,288,320,352,384
+    lq $9,\offset($v1)
+    qfsrv $s1,$9,$8
+    sq $s1,\offset($s0)
+    lq $8,\offset+16($v1)
+    qfsrv $s1,$8,$9
+    sq $s1,\offset+16($s0)
+    .endr
+    addiu $s0,$s0,416
+    addiu $v1,$v1,416
+    addiu $a0,$a0,-1
     bnez $a0,.Lupload_copy
     nop
-    sw $v1,16($sp)
-    dsra32 $v0,$8,0
+    ld $9,0($v1)
+    qfsrv $s1,$9,$8
+    sq $s1,0($s0)
+    addiu $s0,$s0,16
+    addiu $v1,$v1,8
+    sw $v1,32($sp)
+    dsra32 $v0,$9,0
     lq $8,0($sp)
-    addiu $sp,$sp,16
+    lq $9,16($sp)
+    addiu $sp,$sp,32
     mtsab $zero,4
     j 0x224454
     nop
