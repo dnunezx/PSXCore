@@ -11,7 +11,9 @@
 #include <iopheap.h>
 #include <sbv_patches.h>
 #include <ps2sdkapi.h>
+#include <fileio.h>
 #include <string.h>
+#include "target.h"
 
 void _libcglue_init(void) {}
 void _libcglue_deinit(void) {}
@@ -73,6 +75,26 @@ static void fail(int error) {
 void np_igr_clean_exec(void *entry,void *gp,int argc,char **argv) __attribute__((noreturn));
 void np_igr_exec_failed(void) __attribute__((noreturn));
 void np_igr_exec_failed(void) { fail(-14); }
+static int read_exact(int fd,void *buffer,unsigned bytes) {
+    unsigned done=0;
+    while(done<bytes) {
+        int n=fioRead(fd,(unsigned char *)buffer+done,bytes-done);
+        if(n<=0 || (unsigned)n>bytes-done)return 0;
+        done+=(unsigned)n;
+    }
+    return 1;
+}
+static int target_layout(NpIgrTarget *target) {
+    unsigned char header[52],ph[8*32];uint32_t offset;unsigned count;
+    int fd=fioOpen(return_path,FIO_O_RDONLY);if(fd<0)return 0;
+    int bytes=fioLseek(fd,0,2); /* SEEK_END; native fileIO flags/offsets. */
+    int ok=bytes>=52 && fioLseek(fd,0,0)==0 && read_exact(fd,header,sizeof(header)) &&
+        np_igr_target_header(header,(unsigned)bytes,&offset,&count) &&
+        fioLseek(fd,(int)offset,0)==(int)offset && read_exact(fd,ph,count*32) &&
+        np_igr_target_plan(header,ph,(unsigned)bytes,target);
+    int closed=fioClose(fd);
+    return ok && closed>=0;
+}
 int main(int argc,char **argv) {
     (void)argc;(void)argv;
     np_igr_return_status.phase=1;
@@ -91,14 +113,25 @@ int main(int argc,char **argv) {
     np_igr_return_status.phase=3;
     static const char *const modules[]={"rom0:SIO2MAN","rom0:MCMAN","rom0:MCSERV"};
     for(unsigned i=0;i<3;++i)if(SifLoadModule(modules[i],0,NULL)<0)fail(-5-(int)i);
-    /* Unlike Neutrino's owned EE core, POPS still needs its high-memory
-     * ExecPS2 handoff code. Do not blanket-wipe it. SifLoadElf initializes
-     * the selected executable's load segments. */
+    if((unsigned)GetMemorySize()!=0x02000000u)fail(-17);
+    NpIgrTarget target;
+    if(!target_layout(&target))fail(-18);
     np_igr_return_status.phase=4;
     t_ExecData elf={0};
-    if(SifLoadElf(return_path,&elf)<0 || !elf.epc)fail(-9);
+    if(SifLoadElf(return_path,&elf)<0 || elf.epc!=target.entry)fail(-9);
     np_igr_return_status.entry=elf.epc;
-    SifExitIopHeap();SifLoadFileExit();SifExitRpc();
+    fioExit();SifExitIopHeap();SifLoadFileExit();SifExitRpc();
+    /* Old guest communication state remains available until loading ends.
+     * Then clean every user-memory gap around the admitted PT_LOAD ranges.
+     * Packed targets may omit trailing zeros in their unpacked data: inherited
+     * POPS bytes there can corrupt pointers. Preserve the loaded target, our
+     * low loader/private stack, and the top 64 KiB native ExecPS2 handoff. */
+    uintptr_t cursor=NP_IGR_USER_FIRST;
+    for(unsigned i=0;i<target.count;++i) {
+        memset((void *)cursor,0,target.ranges[i].first-cursor);
+        cursor=target.ranges[i].end;
+    }
+    memset((void *)cursor,0,NP_IGR_USER_END-cursor);
     FlushCache(0);FlushCache(2);
     np_igr_return_status.phase=7;
     np_igr_clean_exec((void *)(uintptr_t)elf.epc,(void *)(uintptr_t)elf.gp,1,return_argv);

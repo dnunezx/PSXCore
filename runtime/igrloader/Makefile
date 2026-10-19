@@ -1,7 +1,7 @@
 EE_BIN = igrloader.elf
 EE_OBJS = entry.o main.o cleanexec.o igr.o
 EE_INCS = -I../../include
-EE_CFLAGS = -G0 -Os -Wall -Wextra -Werror
+EE_CFLAGS = -G0 -Os -Wall -Wextra -Werror -DNEWLIB_PORT_AWARE
 NP_IGR_RETURN_PATH ?= mc0:/BOOT/BOOT.ELF
 NP_IGR_RESET_DEBUG ?= 0
 EE_LINKFILE = linkfile
@@ -16,7 +16,7 @@ igrloader_config.h: FORCE
 	printf '#define NP_IGR_RETURN_PATH "%s"\n' '$(NP_IGR_RETURN_PATH)' > igrloader_config.tmp
 	printf '#define NP_IGR_RESET_DEBUG %s\n' '$(NP_IGR_RESET_DEBUG)' >> igrloader_config.tmp
 	if ! cmp -s igrloader_config.tmp $@; then cp igrloader_config.tmp $@; fi
-main.o: igrloader_config.h
+main.o: igrloader_config.h target.h
 igr.o: ../../src/igr.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 linkfile: $(PS2SDK)/ee/startup/linkfile Makefile
