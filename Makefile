@@ -92,7 +92,7 @@ runtime: | build
 	cp runtime/startup_diag.c runtime/startup_diag.h build/runtime/
 	cp runtime/igrwait.S runtime/igrwait.h build/runtime/
 	cp runtime/igrquit.S runtime/igrquit.h build/runtime/
-	cp runtime/igrreturn.h build/runtime/
+	cp runtime/igrreturn.h runtime/igrmenu.h build/runtime/
 ifeq ($(NP_IGR_RETURN),1)
 	cp src/elf.c src/igr.c runtime/igrloader/igrloader_symbols.h build/runtime/
 	$(PS2SDK)/bin/bin2c runtime/igrloader/igrloader.bin build/runtime/igrloader_blob.c np_igr_loader_blob

@@ -97,6 +97,7 @@ extern NpIgrQuitObservation np_igr_quit_observation;
 #if NP_IGR_RETURN
 #include "psxcore_igr.h"
 #include "igrreturn.h"
+#include "igrmenu.h"
 #include "igrloader_symbols.h"
 extern unsigned char np_igr_loader_blob[];
 extern unsigned int size_np_igr_loader_blob;
@@ -1219,6 +1220,9 @@ int main(int argc,char **argv) {
         }
         error=np_runtime_igr_return_plan((void *)NP_BOOT_STAGE,3166988,&elf,
             NP_IGR_LOADER_ENTRY,NP_IGR_LOADER_END,&patch_set);
+        if(error)goto rejected;
+        error=np_runtime_igr_menu_plan((void *)NP_BOOT_STAGE,3166988,&elf,
+            NP_IGR_MENU_DRAW,NP_IGR_LOADER_END,&patch_set);
         if(error)goto rejected;
         trace("PSXCORE igr-return=enabled trigger=native-menu saves=user-owned status=%08x bytes=24\n",
             NP_IGR_LOADER_STATUS);
