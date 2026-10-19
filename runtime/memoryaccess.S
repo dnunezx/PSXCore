@@ -855,8 +855,13 @@ np_video_command_records:
 np_video_worker_written:
     .space 16
 np_video_worker_records:
-#if NP_MDEC_BLOCK_FASTPATH && !NP_MEMORY_ACCESS_TRACE
+#if !NP_MEMORY_ACCESS_TRACE && (NP_MDEC_BLOCK_FASTPATH || NP_GP0_SCALAR_WRITE)
+#if NP_MDEC_BLOCK_FASTPATH
 #include "mdecrow.S"
+#endif
+#if NP_GP0_SCALAR_WRITE
+#include "uploadcopy.S"
+#endif
     .org np_video_worker_records+2048,0
 #else
     .space 2048

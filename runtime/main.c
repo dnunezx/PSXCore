@@ -485,6 +485,30 @@ extern void np_gp0_scalar_write(void);
  * GP1/reset and VBlank flush before executing their original native paths.
  * The complete firmware identity/layout is checked before planning these words. */
 static int install_gp0_packet_adapter(const NpElf *elf) {
+#if NP_GP0_SCALAR_WRITE && !NP_MEMORY_ACCESS_TRACE
+    extern void np_gp0_upload_copy(void),np_gp0_upload_copy_end(void);
+    extern char np_video_worker_records[];
+    const uintptr_t upload=(uintptr_t)np_gp0_upload_copy,upload_end=(uintptr_t)np_gp0_upload_copy_end;
+    const uintptr_t upload_arena=(uintptr_t)np_video_worker_records;
+    if(upload_arena<0xf0000 || upload_arena>0xf6800 || (upload&15) ||
+       upload<upload_arena || upload_end<=upload || upload_end>upload_arena+2048)return -1;
+    /* Pin the s3==4 admission, bounded word count and displaced copy branch.
+     * The helper returns before the original atomic FIFO consumption. */
+    const uint32_t upload_expected[6]={0x1663000b,0x02a2380b,0x8fa40000,
+        0x3082000f,0x14400008,0x0080182d};
+    int upload_found=0;
+    for(unsigned i=0;i<elf->count;++i) {
+        const NpSegment *segment=&elf->segments[i];
+        if(segment->address<=0x224338 && 0x224350<=segment->address+segment->filesz) {
+            const void *words=(const void *)(NP_BOOT_STAGE+segment->offset+0x224338-segment->address);
+            if(memcmp(words,upload_expected,sizeof(upload_expected)))return -1;
+            upload_found=1;break;
+        }
+    }
+    const uint32_t upload_replacement[2]={0x08000000u|((uint32_t)upload>>2),0};
+    if(!upload_found || np_patch_add(&patch_set,0x224344,upload_expected+3,upload_replacement,8))return -1;
+#endif
+
     const uint32_t sites[5]={0x21a974,0x20b4b0,0x20b4c0,0x21a568,0x21aeb0};
     const uint32_t expected[5][2]={{0x0c08ba1c,0x8e042b14},
         {0x0c0869a6,0},{0x0c086b0c,0},{0x27bdffe0,0xffb10008},{0x27bdfff0,0x3c027000}};
