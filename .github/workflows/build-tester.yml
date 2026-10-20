@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build PSXCore Tester ELF
+    name: PSXCore Tester Build
     runs-on: ubuntu-latest
 
     container:
@@ -21,34 +21,104 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          apk add --no-cache make bash git
+          apk update
+          apk add --no-cache \
+            build-base \
+            bash \
+            git \
+            cmake \
+            binutils \
+            coreutils \
+            findutils \
+            grep \
+            sed \
+            patch \
+            python3 \
+            zlib-dev
 
-      - name: Verify PS2 toolchain
+      - name: Configure PS2 toolchain
         run: |
+          echo "PS2DEV=/usr/local/ps2dev" >> "$GITHUB_ENV"
+          echo "PS2SDK=/usr/local/ps2dev/ps2sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/ps2dev/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/ps2dev/ee/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/ps2dev/iop/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/ps2dev/dvp/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/ps2dev/ps2sdk/bin" >> "$GITHUB_PATH"
+
+      - name: Verify build environment
+        run: |
+          echo "=== Environment ==="
           echo "PS2DEV=$PS2DEV"
           echo "PS2SDK=$PS2SDK"
-          command -v make
-          command -v ee-gcc
+          echo "PATH=$PATH"
+
+          echo "=== Required tools ==="
+          for tool in make gcc ar sed grep; do
+            command -v "$tool" || exit 1
+          done
+
+          echo "=== PS2 compilers ==="
+          command -v ee-gcc || true
+          command -v mips64r5900el-ps2-elf-gcc || true
+          command -v ee-ar || true
+          command -v mips64r5900el-ps2-elf-ar || true
+
+          echo "=== PS2SDK tools ==="
+          test -d "$PS2SDK" || exit 1
+          test -f "$PS2SDK/samples/Makefile.pref" || exit 1
+          test -f "$PS2SDK/samples/Makefile.eeglobal" || exit 1
+          test -x "$PS2SDK/bin/bin2c" || exit 1
+
+          echo "=== Toolchain files ==="
+          ls -la "$PS2DEV/ee/bin"
+          ls -la "$PS2SDK/bin"
 
       - name: Build PSXCore Tester
+        shell: bash
         run: |
-          make tester
+          set -o pipefail
+          mkdir -p build
+
+          echo "=== Starting PSXCore build ==="
+
+          make --trace tester 2>&1 | tee build-log.txt
+
+          echo "=== Checking ELF ==="
           test -s build/psxcore-tester.elf
 
       - name: Prepare download package
+        if: success()
         run: |
           mkdir -p package
 
           cp build/psxcore-tester.elf \
             package/PSXCORE-TESTER.ELF
 
-          echo "PSXCore Tester Build" > package/BUILD.txt
-          echo "Commit: $GITHUB_SHA" >> package/BUILD.txt
+          cp build-log.txt package/build-log.txt
+
+          printf "PSXCore Tester\nCommit: %s\n" \
+            "$GITHUB_SHA" > package/BUILD.txt
+
+          sha256sum package/PSXCORE-TESTER.ELF \
+            > package/SHA256SUMS.txt
 
       - name: Upload PSXCore Tester
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: PSXCore-Tester
           path: package/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload debugging logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PSXCore-Build-Diagnostics
+          path: |
+            build-log.txt
+            build/
+          if-no-files-found: ignore
+          retention-days: 14
