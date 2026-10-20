@@ -17,13 +17,15 @@ jobs:
 
     defaults:
       run:
-        shell: bash
+        shell: sh
 
     steps:
       - name: Checkout PSXCore
         uses: actions/checkout@v4
 
+      # Use sh here because bash is not installed yet.
       - name: Install build dependencies
+        shell: sh
         run: |
           apk add --no-cache \
             build-base \
@@ -40,25 +42,40 @@ jobs:
             zlib-dev
 
       - name: Configure PS2 toolchain
-        run: |
-          echo "PS2DEV=/usr/local/ps2dev" >> "$GITHUB_ENV"
-          echo "PS2SDK=/usr/local/ps2dev/ps2sdk" >> "$GITHUB_ENV"
-
-          echo "/usr/local/ps2dev/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/ps2dev/ee/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/ps2dev/iop/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/ps2dev/dvp/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/ps2dev/ps2sdk/bin" >> "$GITHUB_PATH"
-
-      - name: Verify PS2 toolchain
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== PS2 Toolchain ==="
+          echo "PS2DEV=/usr/local/ps2dev" >> "$GITHUB_ENV"
+          echo "PS2SDK=/usr/local/ps2dev/ps2sdk" >> "$GITHUB_ENV"
 
-          command -v make
+          for directory in \
+            /usr/local/ps2dev/bin \
+            /usr/local/ps2dev/ee/bin \
+            /usr/local/ps2dev/iop/bin \
+            /usr/local/ps2dev/dvp/bin \
+            /usr/local/ps2dev/ps2sdk/bin
+          do
+            echo "$directory" >> "$GITHUB_PATH"
+          done
+
+      - name: Verify PS2 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== Checking build tools ==="
+
+          for tool in \
+            bash make git gcc sha256sum
+          do
+            command -v "$tool"
+          done
+
+          echo "=== Checking PS2 compiler ==="
           command -v ee-gcc
-          command -v sha256sum
+
+          echo "=== Checking PS2SDK ==="
 
           test -f "$PS2SDK/samples/Makefile.pref"
           test -f "$PS2SDK/samples/Makefile.eeglobal"
@@ -67,10 +84,11 @@ jobs:
           echo "Toolchain verification passed."
 
       - name: Locate required storage drivers
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== Checking driver directories ==="
+          echo "=== Looking for pinned drivers ==="
 
           DRIVER_DIR=""
 
@@ -81,19 +99,20 @@ jobs:
           do
             echo "Checking: $candidate"
 
-            if [ -d "$candidate" ]; then
+            if [[ -d "$candidate" ]]; then
               DRIVER_DIR="$candidate"
               break
             fi
           done
 
-          if [ -z "$DRIVER_DIR" ]; then
-            echo "::error::Pinned driver directory not found."
-            echo "Expected: ci/pinned-drivers/"
+          if [[ -z "$DRIVER_DIR" ]]; then
+            echo "::error::No pinned driver directory found."
             exit 1
           fi
 
-          echo "=== Required files ==="
+          echo "=== Checking four required drivers ==="
+
+          missing=0
 
           for file in \
             usbd.irx.usbexfat \
@@ -101,22 +120,27 @@ jobs:
             usbd.irx.ata \
             usbhdfsd.irx.ata
           do
-            if [ -s "$DRIVER_DIR/$file" ]; then
+            if [[ -s "$DRIVER_DIR/$file" ]]; then
               echo "FOUND: $file"
             else
               echo "::error::MISSING: $file"
-              exit 1
+              missing=1
             fi
           done
+
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
 
           echo "NP_BDMA_MODULE_DIR=$DRIVER_DIR" \
             >> "$GITHUB_ENV"
 
-      - name: Verify driver checksums
+      - name: Verify driver SHA256 checksums
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== Driver SHA-256 Verification ==="
+          echo "=== Verifying storage drivers ==="
 
           printf '%s  %s\n' \
             5ea4818ba1cf5207f6d7cadb4c13b5afa88c37c260750c21155b079a8c18f369 \
@@ -138,42 +162,40 @@ jobs:
             "$NP_BDMA_MODULE_DIR/usbhdfsd.irx.ata" \
             | sha256sum -c -
 
-          echo "All driver checksums verified."
+          echo "All driver checksums passed."
 
       - name: Prepare PS2SDK source
+        shell: bash
         run: |
           set -euo pipefail
-
-          echo "=== Checking PS2SDK Source ==="
 
           SOURCE="/src/libs/ps2sdk"
 
-          if [ ! -f "$SOURCE/iop/system/iomanx/src/iomanX.c" ]; then
-            echo "Container source unavailable."
-            echo "Downloading PS2SDK source..."
-
-            mkdir -p "$RUNNER_TEMP/ps2sdk-source"
-
-            git clone --depth 1 \
-              https://github.com/ps2dev/ps2sdk.git \
-              "$RUNNER_TEMP/ps2sdk-source"
+          if [[ ! -f "$SOURCE/iop/system/iomanx/src/iomanX.c" ]]; then
+            echo "PS2SDK source missing from image."
+            echo "Cloning source repository..."
 
             SOURCE="$RUNNER_TEMP/ps2sdk-source"
 
-            echo "::warning::Downloaded current PS2SDK source. Compatibility with the installed SDK is not guaranteed."
+            git clone --depth 1 \
+              https://github.com/ps2dev/ps2sdk.git \
+              "$SOURCE"
+
+            echo "::warning::Using latest PS2SDK source; revision compatibility is not verified."
           fi
 
-          test -f "$SOURCE/iop/system/iomanx/src/iomanX.c"
-          test -f "$SOURCE/iop/system/iomanx/src/exports.tab"
+          test -f \
+            "$SOURCE/iop/system/iomanx/src/iomanX.c"
 
-          echo "NP_PS2SDK_SOURCE=$SOURCE" >> "$GITHUB_ENV"
-          echo "PS2SDK source located."
+          echo "NP_PS2SDK_SOURCE=$SOURCE" \
+            >> "$GITHUB_ENV"
 
       - name: Build PSXCore Runtime
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== Building PSXCore Runtime ==="
+          echo "=== Building runtime ==="
 
           make --trace runtime \
             NP_BDMA_MODULE_DIR="$NP_BDMA_MODULE_DIR" \
@@ -182,22 +204,24 @@ jobs:
 
           test -s build/runtime/psxcore.elf
 
-          echo "Runtime build successful."
+          echo "Runtime build succeeded."
 
       - name: Build PSXCore Tester
+        shell: bash
         run: |
           set -euo pipefail
 
-          echo "=== Building PSXCore Tester ==="
+          echo "=== Building tester ==="
 
           make --trace tester \
             2>&1 | tee tester-build.log
 
           test -s build/psxcore-tester.elf
 
-          echo "Tester build successful."
+          echo "Tester build succeeded."
 
-      - name: Create full PSXCore package
+      - name: Prepare full package
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -212,16 +236,16 @@ jobs:
           cat > package/README.txt <<'EOF'
           PSXCore Tester - Full Package
 
-          INSTALLATION
+          Files included:
+          - PSXCORE-TESTER.ELF
+          - POPS/psxcore-runtime-bootstrap.elf
 
-          1. Extract this package to a FAT32 USB drive.
-          2. Keep the runtime bootstrap in the POPS folder.
-          3. Supply your own supported POPS.ELF.
-          4. Supply your own IOPRP252.IMG.
-          5. Place your VCD game files in the POPS folder.
-          6. Launch PSXCORE-TESTER.ELF on your PS2.
+          Additional files required:
+          - POPS.ELF
+          - IOPRP252.IMG
+          - Supported VCD game images
 
-          REQUIRED FOLDER LAYOUT
+          Example USB layout:
 
           USB:/
             PSXCORE-TESTER.ELF
@@ -231,10 +255,8 @@ jobs:
               IOPRP252.IMG
               YourGame.VCD
 
-          POPS files and games are not distributed.
-
-          This is experimental software.
-          Physical console compatibility is not guaranteed.
+          This is experimental PS2 software.
+          Hardware compatibility is not guaranteed.
           EOF
 
           printf 'PSXCore Full Package\n' \
@@ -253,7 +275,7 @@ jobs:
             POPS/psxcore-runtime-bootstrap.elf \
             > SHA256SUMS.txt
 
-          echo "=== Package Contents ==="
+          echo "=== Package files ==="
           find . -type f -print
 
       - name: Upload PSXCore Full Package
@@ -264,7 +286,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Build Diagnostics
+      - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
