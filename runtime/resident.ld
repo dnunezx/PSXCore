@@ -51,7 +51,11 @@ ASSERT(. <= 0x000f7d40, "runtime interlace scanout helpers overflow")
 .clut_refresh 0x000f7d40: {
  KEEP(*(._psxcore_clut_refresh))
 } :resident
-ASSERT(. <= 0x000f7fc0, "runtime CLUT refresh helpers overflow")
+ASSERT(. <= 0x000f7e10, "runtime CLUT refresh helpers overflow")
+.gte_intpl 0x000f7e10: {
+ KEEP(*(._psxcore_gte_intpl))
+} :resident
+ASSERT(. <= 0x000f7fc0, "runtime GTE interpolation helpers overflow")
 .cd_read_status 0x000f7fc0: {
  KEEP(*(._psxcore_cd_read_status))
 } :resident

@@ -11,6 +11,8 @@ EE_OBJS += cdrendezvous.o
 EE_OBJS += cdswap_context.o cdreopen.o cdswap_native.o cdswap.o cdswap_input.o
 EE_OBJS += cdreadstatus.o
 EE_OBJS += clutrefresh.o
+EE_OBJS += gteintpl.o
+main.o: gteintpl_patch.h
 EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h

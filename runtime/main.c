@@ -8,6 +8,9 @@
 #include "startup_diag.h"
 #include "config.h"
 #include "saveguards.h"
+#include "gteintpl_patch.h"
+extern void np_gte_intpl_begin(void),np_gte_intpl_compile(void);
+extern void np_gte_intpl_signed(void),np_gte_intpl_clamp(void),np_gte_intpl_end(void);
 #if NP_CD_SWAP
 #include "cdswap_patch.h"
 #endif
@@ -1011,6 +1014,10 @@ int main(int argc,char **argv) {
     if(install_gte_zero_depth_adapter()) {
         trace("PSXCORE rejected=gte-zero-depth-patch-plan\n");goto rejected;
     }
+    error=np_gte_intpl_plan(&patch_set,(uintptr_t)np_gte_intpl_begin,
+        (uintptr_t)np_gte_intpl_compile,(uintptr_t)np_gte_intpl_signed,
+        (uintptr_t)np_gte_intpl_clamp,(uintptr_t)np_gte_intpl_end);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     /* Native/file launches use the per-game compatibility selection.
      * Legacy diagnostic modes retain the original exact-check behavior. */
     const int code_validation=!native || (resolved.fixes & NP_FIX_CODE_VALIDATION);
@@ -1280,6 +1287,7 @@ int main(int argc,char **argv) {
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     trace("PSXCORE patches=verified count=%u capacity=%u\n",patch_set.count,NP_PATCH_LIMIT);
     trace("PSXCORE gte-orgb=rgb555 saturation=0..31 irgb=rgb555-to-ir128 scope=runtime\n");
+    trace("PSXCORE gte-intpl=signed-ir sf=1 lm=0 scope=runtime\n");
     trace("PSXCORE core-corrections=%u texture-window=repeat scope=runtime\n",
         (unsigned)NP_RUNTIME_CORRECTION_REVISION);
     np_firmware_license_enabled=license;
