@@ -1,7 +1,8 @@
 /* Automatic POPS adapter for direct PS24 scanout on both supported platforms.
  * Select the native buffered RGB24 converter; it owns readback, transfer,
- * drawing and display publication. The adapter writes no guest display state,
- * pixels, packets, semaphores or cycles, and preserves every other wide GPR.
+ * drawing and display publication. Interlaced output marks the native display
+ * descriptor dirty for publication. Pixels, packets, semaphores and cycles
+ * stay native, and every other wide GPR is preserved.
  * Upload/copy/fill updates select the existing converter for RGB24 and retain
  * the native incremental blitter otherwise. No new pixel processing is used. */
     .set noreorder
@@ -142,6 +143,11 @@ interlace_buffered_exit:
     .globl np_interlace_dispatch
 np_interlace_dispatch:
     NP_INTERLACE_TUPLE $a0,interlace_dispatch_native
+    /* The converter changes the buffered display descriptor on each field.
+     * Publish that descriptor through the native dirty-state path after its
+     * existing GS completion wait, before the next field's uploads begin. */
+    ori $a0,$v1,0x20
+    sw $a0,0x22ac($s0)
     j rgb_dispatch_select
     nop
 interlace_dispatch_native:
