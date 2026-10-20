@@ -1262,10 +1262,16 @@ int main(int argc,char **argv) {
         }
         error=np_runtime_igr_return_plan((void *)NP_BOOT_STAGE,3166988,&elf,
             NP_IGR_LOADER_ENTRY,NP_IGR_LOADER_END,&patch_set);
-        if(error)goto rejected;
+        if(error) {
+            trace("PSXCORE rejected=%s\n", error);
+            goto rejected;
+        }
         error=np_runtime_igr_menu_plan((void *)NP_BOOT_STAGE,3166988,&elf,
             NP_IGR_MENU_DRAW,NP_IGR_LOADER_END,&patch_set);
-        if(error)goto rejected;
+        if(error) {
+            trace("PSXCORE rejected=%s\n", error);
+            goto rejected;
+        }
         trace("PSXCORE igr-return=enabled trigger=native-menu saves=user-owned status=%08x bytes=24\n",
             NP_IGR_LOADER_STATUS);
     }
@@ -1279,7 +1285,10 @@ int main(int argc,char **argv) {
             (uintptr_t)&np_cd_swap_runtime,(uintptr_t)&np_cd_reopen,(uintptr_t)np_cd_swap_input,
             (uintptr_t)np_cd_swap_begin,(uintptr_t)np_cd_swap_end,(uintptr_t)&np_cd_swap,
             (uintptr_t)np_cd_swap_tocs,&patch_set);
-        if(error)goto rejected;
+        if(error) {
+            trace("PSXCORE rejected=%s\n", error);
+            goto rejected;
+        }
         trace("PSXCORE disc-swap=native shortcut=L2+R2+Select+direction\n");
     }
 #endif

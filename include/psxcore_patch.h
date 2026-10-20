@@ -4,7 +4,7 @@
 #include "psxcore_elf.h"
 #define NP_PATCH_BYTES 32u
 /* Includes file storage, native IGR, disc swapping, parked GPU control and optional diagnostics. */
-#define NP_PATCH_LIMIT 102u
+#define NP_PATCH_LIMIT 128u
 typedef struct {
     uint32_t address, length;
     unsigned char expected[NP_PATCH_BYTES], replacement[NP_PATCH_BYTES];
