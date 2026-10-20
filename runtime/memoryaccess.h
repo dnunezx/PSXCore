@@ -7,6 +7,8 @@
  * Rewrite only the pinned generator's three-word scalar-access reservation.
  * Return 1 on replacement, 0 on unchanged native paths, -1 on a bad plan.
  * SP-based and merge accesses retain native emission. */
+/* Default-on NP_MEMORY_ADDRESS_PRECOMPUTE=1 uses helper+4 with v0 holding the
+ * effective address. Retain the original ADDU entry for return loads. */
 int np_memory_emit_rewrite(uint32_t instruction, uint32_t ps1_base,
                            uint32_t out[3], const uint32_t helpers[16]);
 /* Scalar finalizer with the pinned JR-ra delay-load prefix. Only a load into

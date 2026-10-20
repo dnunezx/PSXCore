@@ -1,6 +1,12 @@
 /* Original guard calls for POPS-generated scalar memory accesses. Existing
  * native I/O handlers retain register preservation and guest cycle charges.
  * No exception synthesis, guest clock change or interpreter fallback. */
+#ifndef NP_MEMORY_ADDRESS_PRECOMPUTE
+#define NP_MEMORY_ADDRESS_PRECOMPUTE 1
+#endif
+#if NP_MEMORY_ADDRESS_PRECOMPUTE != 0 && NP_MEMORY_ADDRESS_PRECOMPUTE != 1
+#error "Memory address precomputation accepts a boolean build flag only"
+#endif
     .section ._psxcore_hooks,"ax",@progbits
     .set noreorder
     .set noat
@@ -105,6 +111,8 @@ np_memory_group_plan_failed:
     .globl \name
 \name:
     addu $v0,$a0,$a3
+    /* With address precomputation, normal generated calls enter here. Keep
+     * the original entry for the return-delay wrappers and other callers. */
     and $v1,$v0,$at
 #if NP_MEMORY_RAM_FASTPATH
     /* RAM/mirrors cannot overlap native MMIO or expansion registers. Check
@@ -120,7 +128,14 @@ np_memory_group_plan_failed:
     subu $a2,$v1,$a2
     sltiu $a2,$a2,0x2000
     bnez $a2,\name\()_io
+#if NP_MEMORY_ADDRESS_PRECOMPUTE
+    /* Native I/O still requires its original signed offset in a3. Recover
+     * it only on the cold path, in the existing non-faulting delay slot.
+     * SUBU reverses the same 32-bit address addition used by ADDIU/ADDU. */
+    subu $a3,$v0,$a0
+#else
     nop
+#endif
     /* Native expansion-register reads return -1; their writes disappear. */
     lui $a2,0x1f00
     ori $a2,$a2,4

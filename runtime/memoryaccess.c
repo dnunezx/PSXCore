@@ -1,5 +1,12 @@
 #include "memoryaccess.h"
 
+#ifndef NP_MEMORY_ADDRESS_PRECOMPUTE
+#define NP_MEMORY_ADDRESS_PRECOMPUTE 1
+#endif
+#if NP_MEMORY_ADDRESS_PRECOMPUTE != 0 && NP_MEMORY_ADDRESS_PRECOMPUTE != 1
+#error "Memory address precomputation accepts a boolean build flag only"
+#endif
+
 #if defined(__mips__)
 __attribute__((section("._psxcore_memory")))
 #endif
@@ -14,19 +21,27 @@ int np_memory_emit_rewrite(uint32_t instruction, uint32_t ps1_base,
     if (!out || ps1_base > 31 || ((instruction >> 21) & 31) != 4 ||
         helper < 0xf0000 || helper >= 0xf7000 || (helper & 3) ||
         out[0] != instruction || out[1] || out[2]) return -1;
+#if NP_MEMORY_ADDRESS_PRECOMPUTE
+    /* The second helper word accepts an already computed effective address.
+     * Keep that entry inside the same checked resident arena. */
+    if (helper >= 0xf7000 - 4) return -1;
+    const uint32_t jump = 0x0c000000u | ((helper + 4) >> 2);
+    const uint32_t offset = 0x24820000u | (instruction & 0xffff);
+#else
     const uint32_t jump = 0x0c000000u | (helper >> 2);
     const uint32_t offset = 0x24070000u | (instruction & 0xffff);
+#endif
     const uint32_t rt = (instruction >> 16) & 31;
     uint32_t first, second, third;
     if (op & 8) {
-        /* POPS's SWC2 path supplies its value in EE a3. Capture the value
-         * before the signed offset argument replaces that register. */
+        /* POPS's SWC2 path supplies its value in EE a3. Capture it before
+         * argument setup, including when the effective address is precomputed. */
         first = (rt << 21) | 0x0000282du;
         second = jump;
         third = offset;
     } else {
         first = jump;
-        second = offset;                 /* native signed-offset delay slot */
+        second = offset;                 /* nontrapping delay-slot setup */
         third = 0x0040002du | (rt << 11); /* native load-result move */
     }
     out[0] = first;
@@ -146,6 +161,11 @@ int np_memory_emit_finalize_rewrite(uint32_t instruction, uint32_t ps1_base,
             const uint32_t helper = return_helpers[op - 0x20];
             if (!helper || helper < 0xf7000 || helper >= 0xf7800 || (helper & 3)) return -1;
             plan[0] = 0x0c000000u | (helper >> 2);
+#if NP_MEMORY_ADDRESS_PRECOMPUTE
+            /* Return-delay wrappers still enter the original helper and need
+             * its signed-offset argument, rather than a computed v0. */
+            plan[1] = 0x24070000u | (instruction & 0xffff);
+#endif
         }
     }
 #if defined(__mips__)

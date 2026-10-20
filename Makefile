@@ -6,6 +6,9 @@ CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
 NP_MEMORY_RAM_FASTPATH ?= 1
+# Compute addresses in the existing generated call delay slots.
+NP_MEMORY_ADDRESS_PRECOMPUTE ?= 1
+export NP_MEMORY_ADDRESS_PRECOMPUTE
 NP_GP0_PACKET_COALESCE ?= 1
 NP_GP0_PACKET_TRACE ?= 0
 NP_GP0_SCALAR_WRITE ?= 1
