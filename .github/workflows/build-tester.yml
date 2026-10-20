@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    name: Build PSXCore Tester ELF
     runs-on: ubuntu-latest
 
     container:
@@ -18,20 +19,33 @@ jobs:
       - name: Checkout PSXCore
         uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache make bash git
+
+      - name: Verify PS2 toolchain
+        run: |
+          echo "PS2DEV=$PS2DEV"
+          echo "PS2SDK=$PS2SDK"
+          command -v make
+          command -v ee-gcc
+
       - name: Build PSXCore Tester
         run: |
           make tester
           test -s build/psxcore-tester.elf
 
-      - name: Prepare download
+      - name: Prepare download package
         run: |
           mkdir -p package
+
           cp build/psxcore-tester.elf \
             package/PSXCORE-TESTER.ELF
 
-          echo "${GITHUB_SHA}" > package/BUILD.txt
+          echo "PSXCore Tester Build" > package/BUILD.txt
+          echo "Commit: $GITHUB_SHA" >> package/BUILD.txt
 
-      - name: Upload tester
+      - name: Upload PSXCore Tester
         uses: actions/upload-artifact@v4
         with:
           name: PSXCore-Tester
