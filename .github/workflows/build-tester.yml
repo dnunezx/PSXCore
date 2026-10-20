@@ -34,56 +34,45 @@ jobs:
             coreutils findutils grep sed patch \
             python3 zlib-dev
 
-      - name: Configure PS2 environment
+      - name: Configure environment
         run: |
-          for directory in \
+          for dir in \
             "$PS2DEV/bin" \
             "$PS2DEV/ee/bin" \
             "$PS2DEV/iop/bin" \
             "$PS2DEV/dvp/bin" \
             "$PS2SDK/bin"
           do
-            echo "$directory" >> "$GITHUB_PATH"
+            echo "$dir" >> "$GITHUB_PATH"
           done
 
-      - name: Verify PS2 toolchain
+      - name: Inspect PS2 compilers
         run: |
-          set -eu
-
-          export PATH="$PATH:$PS2DEV/bin:$PS2DEV/ee/bin:$PS2DEV/iop/bin:$PS2DEV/dvp/bin:$PS2SDK/bin"
-
-          echo "=== Build tools ==="
-          command -v make
-          command -v git
-          command -v sha256sum
-
-          echo "=== PS2 EE compiler ==="
+          echo "=== EE compiler ==="
           command -v mips64r5900el-ps2-elf-gcc
           mips64r5900el-ps2-elf-gcc --version
 
-          echo "=== PS2 EE archiver ==="
+          echo "=== EE archiver ==="
           command -v mips64r5900el-ps2-elf-ar
 
-          echo "=== PS2 IOP compiler ==="
-          command -v mipsel-ps2-irx-gcc
+          echo "=== IOP compiler ==="
+          command -v mipsel-none-elf-gcc
+          mipsel-none-elf-gcc --version
+
+          echo "=== Available IOP tools ==="
+          ls -lah "$PS2DEV/iop/bin"
 
           echo "=== PS2SDK ==="
           test -f "$PS2SDK/samples/Makefile.pref"
           test -f "$PS2SDK/samples/Makefile.eeglobal"
           test -x "$PS2SDK/bin/bin2c"
 
-          echo "Toolchain verification passed."
-
-      - name: Locate pinned drivers
+      - name: Check required drivers
         run: |
           set -eu
 
           DRIVER_DIR="$GITHUB_WORKSPACE/ci/pinned-drivers"
-
-          if [ ! -d "$DRIVER_DIR" ]; then
-            echo "::error::Missing ci/pinned-drivers directory"
-            exit 1
-          fi
+          echo "Checking $DRIVER_DIR"
 
           missing=0
 
@@ -95,6 +84,7 @@ jobs:
           do
             if [ -s "$DRIVER_DIR/$file" ]; then
               echo "FOUND: $file"
+              sha256sum "$DRIVER_DIR/$file"
             else
               echo "::error::MISSING: $file"
               missing=1
@@ -115,12 +105,10 @@ jobs:
 
           if [ ! -f "$SOURCE/iop/system/iomanx/src/iomanX.c" ]; then
             SOURCE="$RUNNER_TEMP/ps2sdk-source"
-
             git clone --depth 1 \
               https://github.com/ps2dev/ps2sdk.git \
               "$SOURCE"
-
-            echo "::warning::Using current PS2SDK source; compatibility is not guaranteed."
+            echo "::warning::Using unpinned PS2SDK source."
           fi
 
           test -f "$SOURCE/iop/system/iomanx/src/iomanX.c"
@@ -149,22 +137,7 @@ jobs:
 
           test -s build/runtime/psxcore.elf
 
-      - name: Verify pinned driver checksums
-        run: |
-          set -eu
-
-          echo "Driver hashes were checked by the runtime Makefile."
-
-          for file in \
-            usbd.irx.usbexfat \
-            usbhdfsd.irx.usbexfat \
-            usbd.irx.ata \
-            usbhdfsd.irx.ata
-          do
-            sha256sum "$NP_BDMA_MODULE_DIR/$file"
-          done
-
-      - name: Prepare full package
+      - name: Package full build
         run: |
           set -eu
 
@@ -176,23 +149,10 @@ jobs:
           cp build/runtime/psxcore.elf \
             package/POPS/psxcore-runtime-bootstrap.elf
 
-          cat > package/README.txt <<'EOF'
-          PSXCore Tester Full Package
+          printf 'PSXCore Tester Full Package\n' \
+            > package/README.txt
 
-          Included:
-          PSXCORE-TESTER.ELF
-          POPS/psxcore-runtime-bootstrap.elf
-
-          Additional user-supplied files:
-          POPS/POPS.ELF
-          POPS/IOPRP252.IMG
-          POPS/*.VCD
-
-          Experimental homebrew software.
-          Hardware compatibility is not guaranteed.
-          EOF
-
-          printf "Commit: %s\n" "$GITHUB_SHA" \
+          printf 'Commit: %s\n' "$GITHUB_SHA" \
             > package/BUILD.txt
 
           cd package
@@ -204,7 +164,7 @@ jobs:
 
           find . -type f -print
 
-      - name: Upload PSXCore Full Package
+      - name: Upload full package
         uses: actions/upload-artifact@v4
         with:
           name: PSXCore-Tester-Full
