@@ -1,0 +1,40 @@
+
+name: Build PSXCore Tester
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - tester
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/ps2dev/ps2dev:latest
+
+    steps:
+      - name: Checkout PSXCore
+        uses: actions/checkout@v4
+
+      - name: Build PSXCore Tester
+        run: |
+          make tester
+          test -s build/psxcore-tester.elf
+
+      - name: Prepare download
+        run: |
+          mkdir -p package
+          cp build/psxcore-tester.elf \
+            package/PSXCORE-TESTER.ELF
+
+          echo "${GITHUB_SHA}" > package/BUILD.txt
+
+      - name: Upload tester
+        uses: actions/upload-artifact@v4
+        with:
+          name: PSXCore-Tester
+          path: package/
+          if-no-files-found: error
+          retention-days: 30
