@@ -14,7 +14,7 @@
 #error "GP0 empty flush accepts a boolean build flag only"
 #endif
 #ifndef NP_GP0_PUBLISH_TWO_TEMPS
-#define NP_GP0_PUBLISH_TWO_TEMPS 0
+#define NP_GP0_PUBLISH_TWO_TEMPS 1
 #endif
 #if NP_GP0_PUBLISH_TWO_TEMPS < 0 || NP_GP0_PUBLISH_TWO_TEMPS > 1
 #error "GP0 publish temporary selection accepts a boolean build flag only"
