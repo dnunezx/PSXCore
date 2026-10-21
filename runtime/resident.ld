@@ -27,9 +27,7 @@ ASSERT(. <= 0x000eb000, "runtime CD TOC arena overflow")
  KEEP(*(._psxcore_cd_swap_runtime.end))
 } :resident
 ASSERT(. <= 0x000ec000, "runtime CD scheduler arena overflow")
-/* Separate arenas for exact packet construction and CD admission. */
-.packet_fast 0x000ec000: { KEEP(*(._packet_fast.text)) } :resident
-ASSERT(. <= 0x000ec800, "packet fast overlaps CD order")
+/* CD admission arena; packet construction has a separate resident gap. */
 .cd_order 0x000ec800: {
  np_cd_order_begin = .;
  KEEP(*(._psxcore_cd_order.text))
@@ -100,3 +98,12 @@ ASSERT(. <= 0x000ff000, "runtime GP1 ownership helper overflow")
  np_code_guard_resident_end = .;
 } :resident
 ASSERT(. <= 0x00100000, "runtime code guard overlaps loader")
+/* Keep the optional packet builder clear of IGR's private return stack and
+ * all established helpers. Oversized diagnostic combinations must reject. */
+.packet_fast 0x000ffd00: {
+ KEEP(*(._packet_fast.text))
+} :resident
+ASSERT(SIZEOF(.packet_fast)==0 ||
+       ADDR(.code_guard)+SIZEOF(.code_guard)<=0x000ffd00,
+       "runtime code guard overlaps polygon packet helper")
+ASSERT(. <= 0x00100000, "runtime polygon packet helper overlaps loader")

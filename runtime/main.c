@@ -19,7 +19,8 @@
 #endif
 #if NP_GPU_PACKET_FASTPATH
 extern void np_packet_fast(void);
-extern char np_packet_fast_end[];
+extern char np_packet_fast_template[],np_packet_fast_end[];
+#include "polygonpacket_patch.h"
 #endif
 #if NP_CD_COMMAND_ORDER
 extern void np_cd_order_command(void),np_cd_order_after_ack(void);
@@ -1312,13 +1313,9 @@ int main(int argc,char **argv) {
 #endif
 #if NP_GPU_PACKET_FASTPATH
     if(native) {
-        const uintptr_t begin=(uintptr_t)np_packet_fast,end=(uintptr_t)np_packet_fast_end;
-        const uint32_t expected[2]={0x00158a02,0x2689330c};
-        const uint32_t replacement[2]={0x08000000u|((uint32_t)begin>>2),0};
-        if(begin!=0xec000 || end<=begin || end>0xec800 || ((begin|end)&3)) {
-            error="packet-fast-layout";goto rejected;
-        }
-        error=np_patch_add(&patch_set,0x21f630,expected,replacement,sizeof(expected));
+        error=np_polygon_packet_plan((const void *)NP_BOOT_STAGE,3166988,&elf,&patch_set,
+            (uintptr_t)np_packet_fast,(uintptr_t)np_packet_fast_template,
+            (uintptr_t)np_packet_fast_end);
         if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
         trace("PSXCORE polygon-packet-fastpath=1 packet=exact fallback=native\n");
     }

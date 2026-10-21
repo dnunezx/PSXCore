@@ -87,7 +87,7 @@ ifeq ($(NP_IGR_RETURN),1)
 	$(PS2SDK)/bin/bin2c runtime/igrloader/igrloader.bin build/runtime/igrloader_blob.c np_igr_loader_blob
 endif
 	cp runtime/cdobserve.S runtime/cdobserve.h build/runtime/
-	cp runtime/packet_fast.S runtime/cdorder.c runtime/cdorder.S build/runtime/
+	cp runtime/packet_fast.S runtime/polygonpacket_patch.h runtime/cdorder.c runtime/cdorder.S build/runtime/
 	cp runtime/cdrendezvous.S runtime/cdrendezvous.h build/runtime/
 	cp src/discset.c build/runtime/
 	cp runtime/cdreopen.c runtime/cdreopen.h runtime/cdswap.c runtime/cdswap.h runtime/cdswap_input.S runtime/cdswap_patch.h runtime/cdswap_runtime.h runtime/cdswap_bindings.h runtime/cdswap_native.S runtime/cdswap_context.S build/runtime/

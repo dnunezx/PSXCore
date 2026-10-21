@@ -11,6 +11,7 @@ EE_OBJS += cdrendezvous.o
 EE_OBJS += cdswap_context.o cdreopen.o cdswap_native.o cdswap.o cdswap_input.o
 EE_OBJS += cdreadstatus.o
 EE_OBJS += clutrefresh.o
+main.o: polygonpacket_patch.h
 EE_OBJS += gteintpl.o
 main.o: gteintpl_patch.h
 EE_OBJS += gp1idle.o
