@@ -1,5 +1,5 @@
-/* General RLE work reduction with the PS1's full six-bit zero-run field.
- * Keep token consumption, clamping, lookup reads and padding semantics. */
+/* General RLE work reduction with six-bit zero runs. Runs past the block
+ * terminate without a coefficient store; preserve native padding handling. */
     .set noreorder
     .set noat
     .balign 16
@@ -22,17 +22,16 @@ np_mdec_rle_general:
     sh $9,0($a1)
     li $a2,0x4f9a18
     ori $8,$zero,0xfe00
-    li $11,63
     li $a3,1
 .Lrle_general_token:
     lhu $a0,0($v0)
     addiu $v0,$v0,2
     beq $a0,$8,.Lrle_general_padding
     srl $9,$a0,10
-    andi $9,$9,63
+    /* LHU followed by SRL 10 already yields the complete six-bit field. */
     addu $a3,$a3,$9
     sltiu $9,$a3,64
-    movz $a3,$11,$9
+    beqz $9,.Lrle_general_padding
     addu $12,$a2,$a3
     lbu $12,0($12)
     sll $10,$a0,22
@@ -56,5 +55,8 @@ np_mdec_rle_general:
     addiu $sp,$sp,-32
     j 0x20d2b0
     sd $s2,16($sp)
+    /* Keep following resident helper addresses stable after shortening the
+     * executable path. These bytes follow an unconditional native redirect. */
+    .space 8
     .balign 16
 np_mdec_rle_general_end:

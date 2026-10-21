@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 7) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 8) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -112,5 +112,23 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x18,0x9a,0x04,0x25, 0x21,0x38,0xe2,0x00,
         0x80,0x1d,0x06,0x00, 0x40,0x00,0xe2,0x2c
     };
-    return np_patch_add(set, 0x0020d30c, mdec_run_expected, mdec_run_corrected, sizeof(mdec_run_expected));
+    error = np_patch_add(set, 0x0020d30c, mdec_run_expected, mdec_run_corrected, sizeof(mdec_run_expected));
+    if (error) return error;
+    /* A run beyond coefficient 63 terminates the block without a store.
+     * POPS instead clamps it to 63 and writes a spurious coefficient there.
+     * Branch to the existing padding/return path before the lookup and store;
+     * the delay-slot address calculation performs no memory access. */
+    static const unsigned char mdec_end_expected[32] = {
+        0x83,0x35,0x03,0x00, 0x0a,0x38,0xa2,0x00,
+        0x21,0x20,0xe4,0x00, 0x01,0x00,0xe7,0x24,
+        0x00,0x00,0x82,0x90, 0x40,0x00,0xe3,0x2c,
+        0x40,0x10,0x02,0x00, 0x21,0x10,0x52,0x00
+    };
+    static const unsigned char mdec_end_corrected[32] = {
+        0x83,0x35,0x03,0x00, 0x0d,0x00,0x40,0x10,
+        0x21,0x20,0xe4,0x00, 0x01,0x00,0xe7,0x24,
+        0x00,0x00,0x82,0x90, 0x40,0x00,0xe3,0x2c,
+        0x40,0x10,0x02,0x00, 0x21,0x10,0x52,0x00
+    };
+    return np_patch_add(set, 0x0020d32c, mdec_end_expected, mdec_end_corrected, sizeof(mdec_end_expected));
 }
