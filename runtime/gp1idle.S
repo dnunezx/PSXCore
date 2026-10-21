@@ -5,7 +5,7 @@
  * clock charges or completion policy. All other cases retain the native path.
  * The lease spans no live GPUSTAT read-modify-write across the worker wait. */
 #ifndef NP_GP1_EARLY_REJECT
-#define NP_GP1_EARLY_REJECT 0
+#define NP_GP1_EARLY_REJECT 1
 #endif
 #if NP_GP1_EARLY_REJECT < 0 || NP_GP1_EARLY_REJECT > 1
 #error "GP1 early rejection accepts a boolean build flag only"

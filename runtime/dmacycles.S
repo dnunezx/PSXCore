@@ -2,7 +2,7 @@
  * exclude it from linked GPU DMA completion accounting. All entries execute
  * inside the native interrupt-masked counter updates. No title RAM is read. */
 #ifndef NP_GPU_DMA_INLINE_ACCOUNTING
-#define NP_GPU_DMA_INLINE_ACCOUNTING 0
+#define NP_GPU_DMA_INLINE_ACCOUNTING 1
 #endif
 #if NP_GPU_DMA_INLINE_ACCOUNTING != 0 && NP_GPU_DMA_INLINE_ACCOUNTING != 1
 #error "Inline DMA accounting accepts a boolean build flag only"

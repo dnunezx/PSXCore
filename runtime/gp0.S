@@ -8,7 +8,7 @@
     .set noreorder
     .set noat
 #ifndef NP_GP0_EMPTY_FLUSH_FASTPATH
-#define NP_GP0_EMPTY_FLUSH_FASTPATH 0
+#define NP_GP0_EMPTY_FLUSH_FASTPATH 1
 #endif
 #if NP_GP0_EMPTY_FLUSH_FASTPATH < 0 || NP_GP0_EMPTY_FLUSH_FASTPATH > 1
 #error "GP0 empty flush accepts a boolean build flag only"
