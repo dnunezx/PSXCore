@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 8) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 9) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -130,5 +130,23 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x00,0x00,0x82,0x90, 0x40,0x00,0xe3,0x2c,
         0x40,0x10,0x02,0x00, 0x21,0x10,0x52,0x00
     };
-    return np_patch_add(set, 0x0020d32c, mdec_end_expected, mdec_end_corrected, sizeof(mdec_end_expected));
+    error = np_patch_add(set, 0x0020d32c, mdec_end_expected, mdec_end_corrected, sizeof(mdec_end_expected));
+    if (error) return error;
+    /* Padding before a block is not its DC coefficient. Skip every FE00h
+     * before extracting the quantizer and signed DC, as at block boundaries.
+     * The increment in the branch delay slot consumes either kind of token.
+     * Keep this window separate from the preceding clear-call redirect. */
+    static const unsigned char mdec_padding_expected[32] = {
+        0x2d,0x10,0x20,0x02, 0x02,0x00,0x31,0x26,
+        0x00,0x00,0x46,0x94, 0x2d,0x20,0x20,0x02,
+        0x00,0xfe,0x05,0x34, 0x01,0x00,0x07,0x24,
+        0x80,0x15,0x06,0x00, 0x82,0x1a,0x06,0x00
+    };
+    static const unsigned char mdec_padding_corrected[32] = {
+        0x00,0xfe,0x05,0x34, 0x00,0x00,0x26,0x96,
+        0xfe,0xff,0xc5,0x10, 0x02,0x00,0x31,0x26,
+        0x2d,0x20,0x20,0x02, 0x01,0x00,0x07,0x24,
+        0x80,0x15,0x06,0x00, 0x82,0x1a,0x06,0x00
+    };
+    return np_patch_add(set, 0x0020d2d4, mdec_padding_expected, mdec_padding_corrected, sizeof(mdec_padding_expected));
 }

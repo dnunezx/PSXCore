@@ -315,7 +315,9 @@ static int install_mdec_block_fastpaths(void) {
         if(hooks[i]<begin || hooks[i]>=end || (hooks[i]&3))return -1;
         const uint32_t replacement[4]={(i==3?0x0c000000u:0x08000000u)|((uint32_t)hooks[i]>>2),
             i==3?expected[i][1]:0,expected[i][2],expected[i][3]};
-        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,sizeof(replacement)))return -1;
+        /* The native padding correction owns the words after the clear call. */
+        const size_t length=i==3?8:sizeof(replacement);
+        if(np_patch_add(&patch_set,sites[i],expected[i],replacement,length))return -1;
     }
     return 0;
 }

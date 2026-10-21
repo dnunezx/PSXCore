@@ -292,11 +292,13 @@ np_mdec_rle_tokens:
     lhu $v0,2($a0)
     ori $v1,$zero,0xfe00
     bne $v0,$v1,np_mdec_rle_native
-    nop
-    .irp off,0,16,32,48,64,80,96,112
+    lhu $v0,0($a0)
+    /* FE00h before the DC belongs to the general parser's padding skip. */
+    beq $v0,$v1,np_mdec_rle_native
+    sq $zero,0($a1)
+    .irp off,16,32,48,64,80,96,112
     sq $zero,\off($a1)
     .endr
-    lhu $v0,0($a0)
     srl $v1,$v0,10
     sw $v1,0($a2)
     sll $v0,$v0,22
