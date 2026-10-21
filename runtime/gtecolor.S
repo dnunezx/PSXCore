@@ -6,19 +6,17 @@
     .balign 16
     .macro NP_ORGB_CHANNEL reg,offset
     lh \reg,\offset($gp)
-    slti $v0,\reg,0
-    movn \reg,$zero,$v0
-    srl \reg,\reg,7
-    sltiu $v0,\reg,32
-    bnez $v0,1f
-    nop
-    addiu \reg,$zero,31
-1:
+    sra \reg,\reg,7
+    pmaxw \reg,\reg,$zero
+    pminw \reg,\reg,$v0
     .endm
     .globl np_gte_orgb
 np_gte_orgb:
-    /* IR1..IR3 are signed halfwords. ORGB clamps each IR/128 to 0..31
-     * without setting GTE flags, then packs once as RGB555. */
+    /* IRGB and ORGB read the same current color. Clamp signed IR/128
+     * to 0..31, pack RGB555 and publish full zero-extended words to both
+     * mirrors without setting GTE flags. Signed word min/max avoids
+     * all three saturation branches and uses the native clobber set. */
+    addiu $v0,$zero,31
     NP_ORGB_CHANNEL $a0,468
     NP_ORGB_CHANNEL $a1,472
     NP_ORGB_CHANNEL $a2,476
@@ -26,12 +24,14 @@ np_gte_orgb:
     sll $a2,$a2,10
     or $v0,$a0,$a1
     or $v0,$v0,$a2
-    sh $v0,548($gp)
+    sw $v0,544($gp)
+    sw $v0,548($gp)
     jr $ra
     nop
     .globl np_gte_orgb_end
 np_gte_orgb_end:
-    .balign 16
+    /* Keep the existing input/zero-depth helper addresses. */
+    .balign 128
     .globl np_gte_irgb
 np_gte_irgb:
     /* PEXT5 expands RGB555 to 8-bit channels (channel << 3). GTE IRGB
