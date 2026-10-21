@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 6) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 7) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -95,5 +95,22 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x30,0x00,0x02,0x3c, 0xdc,0xef,0x43,0xac,
         0xf0,0x10,0x43,0x26, 0x7c,0x22,0x62,0x8c
     };
-    return np_patch_add(set, 0x0021a5b0, gpu_info_expected, gpu_info_corrected, sizeof(gpu_info_expected));
+    error = np_patch_add(set, 0x0021a5b0, gpu_info_expected, gpu_info_corrected, sizeof(gpu_info_expected));
+    if (error) return error;
+    /* MDEC AC tokens encode their zero run in bits 15..10. Keeping only five
+     * bits wraps runs 32..63 and places coefficients at the wrong frequency.
+     * Correct the native parser as well as the optional resident fast path. */
+    static const unsigned char mdec_run_expected[32] = {
+        0x50,0x00,0x08,0x3c, 0x82,0x12,0x06,0x00,
+        0x3f,0x00,0x05,0x24, 0x1f,0x00,0x42,0x30,
+        0x18,0x9a,0x04,0x25, 0x21,0x38,0xe2,0x00,
+        0x80,0x1d,0x06,0x00, 0x40,0x00,0xe2,0x2c
+    };
+    static const unsigned char mdec_run_corrected[32] = {
+        0x50,0x00,0x08,0x3c, 0x82,0x12,0x06,0x00,
+        0x3f,0x00,0x05,0x24, 0x3f,0x00,0x42,0x30,
+        0x18,0x9a,0x04,0x25, 0x21,0x38,0xe2,0x00,
+        0x80,0x1d,0x06,0x00, 0x40,0x00,0xe2,0x2c
+    };
+    return np_patch_add(set, 0x0020d30c, mdec_run_expected, mdec_run_corrected, sizeof(mdec_run_expected));
 }

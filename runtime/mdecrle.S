@@ -1,5 +1,5 @@
-/* Exact general RLE work reduction. Keep native token consumption, 5-bit run
- * mask, clamping, lookup reads, signed coefficients and padding semantics. */
+/* General RLE work reduction with the PS1's full six-bit zero-run field.
+ * Keep token consumption, clamping, lookup reads and padding semantics. */
     .set noreorder
     .set noat
     .balign 16
@@ -29,7 +29,7 @@ np_mdec_rle_general:
     addiu $v0,$v0,2
     beq $a0,$8,.Lrle_general_padding
     srl $9,$a0,10
-    andi $9,$9,31
+    andi $9,$9,63
     addu $a3,$a3,$9
     sltiu $9,$a3,64
     movz $a3,$11,$9
