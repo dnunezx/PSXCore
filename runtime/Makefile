@@ -22,6 +22,14 @@ NP_MEMORY_ACCESS_TRACE ?= 0
 NP_MEMORY_RAM_FASTPATH ?= 1
 NP_MEMORY_ADDRESS_PRECOMPUTE ?= 1
 NP_GP0_PACKET_COALESCE ?= 1
+NP_GPU_PACKET_FASTPATH ?= 1
+NP_CD_COMMAND_ORDER ?= 1
+ifeq ($(NP_GPU_PACKET_FASTPATH),1)
+EE_OBJS += packet_fast.o
+endif
+ifeq ($(NP_CD_COMMAND_ORDER),1)
+EE_OBJS += cdorder.o cdorder_asm.o
+endif
 NP_GP0_PACKET_TRACE ?= 0
 NP_GP0_SCALAR_WRITE ?= 1
 NP_GP1_IDLE_CONTROL ?= 1
@@ -62,6 +70,8 @@ EE_CFLAGS += -DNP_MEMORY_ACCESS_TRACE=$(NP_MEMORY_ACCESS_TRACE)
 EE_CFLAGS += -DNP_MEMORY_RAM_FASTPATH=$(NP_MEMORY_RAM_FASTPATH)
 EE_CFLAGS += -DNP_MEMORY_ADDRESS_PRECOMPUTE=$(NP_MEMORY_ADDRESS_PRECOMPUTE)
 EE_CFLAGS += -DNP_GP0_PACKET_COALESCE=$(NP_GP0_PACKET_COALESCE)
+EE_CFLAGS += -DNP_GPU_PACKET_FASTPATH=$(NP_GPU_PACKET_FASTPATH)
+EE_CFLAGS += -DNP_CD_COMMAND_ORDER=$(NP_CD_COMMAND_ORDER)
 EE_CFLAGS += -DNP_GP0_PACKET_TRACE=$(NP_GP0_PACKET_TRACE)
 EE_CFLAGS += -DNP_GP0_SCALAR_WRITE=$(NP_GP0_SCALAR_WRITE)
 EE_CFLAGS += -DNP_GP1_IDLE_CONTROL=$(NP_GP1_IDLE_CONTROL)
@@ -138,3 +148,8 @@ include $(PS2SDK)/samples/Makefile.eeglobal
 
 reverbexact.o: reverbexact.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Wno-unused-variable -Wno-unused-but-set-variable -fno-strict-aliasing -fwrapv -Os -c $< -o $@
+
+cdorder_asm.o: cdorder.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
+cdorder.o: cdorder.c
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Os -G0 -fno-builtin -fno-jump-tables -fno-tree-loop-distribute-patterns -c $< -o $@

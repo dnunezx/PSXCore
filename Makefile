@@ -10,6 +10,9 @@ NP_MEMORY_RAM_FASTPATH ?= 1
 NP_MEMORY_ADDRESS_PRECOMPUTE ?= 1
 export NP_MEMORY_ADDRESS_PRECOMPUTE
 NP_GP0_PACKET_COALESCE ?= 1
+NP_GPU_PACKET_FASTPATH ?= 1
+NP_CD_COMMAND_ORDER ?= 1
+export NP_GPU_PACKET_FASTPATH NP_CD_COMMAND_ORDER
 NP_GP0_PACKET_TRACE ?= 0
 NP_GP0_SCALAR_WRITE ?= 1
 NP_GP1_IDLE_CONTROL ?= 1
@@ -84,6 +87,7 @@ ifeq ($(NP_IGR_RETURN),1)
 	$(PS2SDK)/bin/bin2c runtime/igrloader/igrloader.bin build/runtime/igrloader_blob.c np_igr_loader_blob
 endif
 	cp runtime/cdobserve.S runtime/cdobserve.h build/runtime/
+	cp runtime/packet_fast.S runtime/cdorder.c runtime/cdorder.S build/runtime/
 	cp runtime/cdrendezvous.S runtime/cdrendezvous.h build/runtime/
 	cp src/discset.c build/runtime/
 	cp runtime/cdreopen.c runtime/cdreopen.h runtime/cdswap.c runtime/cdswap.h runtime/cdswap_input.S runtime/cdswap_patch.h runtime/cdswap_runtime.h runtime/cdswap_bindings.h runtime/cdswap_native.S runtime/cdswap_context.S build/runtime/

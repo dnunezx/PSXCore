@@ -27,6 +27,16 @@ ASSERT(. <= 0x000eb000, "runtime CD TOC arena overflow")
  KEEP(*(._psxcore_cd_swap_runtime.end))
 } :resident
 ASSERT(. <= 0x000ec000, "runtime CD scheduler arena overflow")
+/* Separate arenas for exact packet construction and CD admission. */
+.packet_fast 0x000ec000: { KEEP(*(._packet_fast.text)) } :resident
+ASSERT(. <= 0x000ec800, "packet fast overlaps CD order")
+.cd_order 0x000ec800: {
+ np_cd_order_begin = .;
+ KEEP(*(._psxcore_cd_order.text))
+ KEEP(*(._psxcore_cd_order.data))
+ np_cd_order_end = .;
+} :resident
+ASSERT(. <= 0x000f0000, "runtime CD order arena overflow")
 .diagnostic 0x000f0000: {
  KEEP(*(._psxcore_hooks))
  KEEP(*(._psxcore_memory))

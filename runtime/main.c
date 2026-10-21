@@ -7,6 +7,24 @@
 #include "file_storage.h"
 #include "startup_diag.h"
 #include "config.h"
+#ifndef NP_GPU_PACKET_FASTPATH
+#define NP_GPU_PACKET_FASTPATH 1
+#endif
+#ifndef NP_CD_COMMAND_ORDER
+#define NP_CD_COMMAND_ORDER 1
+#endif
+#if (NP_GPU_PACKET_FASTPATH != 0 && NP_GPU_PACKET_FASTPATH != 1) || \
+    (NP_CD_COMMAND_ORDER != 0 && NP_CD_COMMAND_ORDER != 1)
+#error "Packet fast path and CD command ordering must be 0 or 1"
+#endif
+#if NP_GPU_PACKET_FASTPATH
+extern void np_packet_fast(void);
+extern char np_packet_fast_end[];
+#endif
+#if NP_CD_COMMAND_ORDER
+extern void np_cd_order_command(void),np_cd_order_after_ack(void);
+extern char np_cd_order_begin[],np_cd_order_end[];
+#endif
 #include "saveguards.h"
 #include "gteintpl_patch.h"
 extern void np_gte_intpl_begin(void),np_gte_intpl_compile(void);
@@ -1290,6 +1308,36 @@ int main(int argc,char **argv) {
             goto rejected;
         }
         trace("PSXCORE disc-swap=native shortcut=L2+R2+Select+direction\n");
+    }
+#endif
+#if NP_GPU_PACKET_FASTPATH
+    if(native) {
+        const uintptr_t begin=(uintptr_t)np_packet_fast,end=(uintptr_t)np_packet_fast_end;
+        const uint32_t expected[2]={0x00158a02,0x2689330c};
+        const uint32_t replacement[2]={0x08000000u|((uint32_t)begin>>2),0};
+        if(begin!=0xec000 || end<=begin || end>0xec800 || ((begin|end)&3)) {
+            error="packet-fast-layout";goto rejected;
+        }
+        error=np_patch_add(&patch_set,0x21f630,expected,replacement,sizeof(expected));
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        trace("PSXCORE polygon-packet-fastpath=1 packet=exact fallback=native\n");
+    }
+#endif
+#if NP_CD_COMMAND_ORDER
+    if(native) {
+        const uintptr_t begin=(uintptr_t)np_cd_order_begin,end=(uintptr_t)np_cd_order_end;
+        const uintptr_t command=(uintptr_t)np_cd_order_command,ack=(uintptr_t)np_cd_order_after_ack;
+        if(begin!=0xec800 || end<=begin || end>0xf0000 ||
+           command<begin || command>=end || ack<begin || ack>=end ||
+           ((begin|end|command|ack)&3)) {
+            error="cd-order-layout";goto rejected;
+        }
+        if(queue_word(0x4f9f24,0x20fa30,(uint32_t)command) ||
+           queue_word(0x20fb18,0x0808398e,0x08000000u|((uint32_t)ack>>2)) ||
+           queue_word(0x20fb4c,0x0808398e,0x08000000u|((uint32_t)ack>>2))) {
+            error="cd-order-plan";goto rejected;
+        }
+        trace("PSXCORE cd-command-order=1 admission=after-irq-ack queue=8\n");
     }
 #endif
     error=np_patch_apply((void *)NP_BOOT_STAGE,3166988,&elf,&patch_set);
