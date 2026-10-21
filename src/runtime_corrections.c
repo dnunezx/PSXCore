@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 9) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 11) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -65,17 +65,17 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     };
     error = np_patch_add(set, 0x00213c0c, spu_expected, spu_corrected, sizeof(spu_expected));
     if (error) return error;
-    /* GTE data register 23 (RES1) is ordinary 32-bit read/write storage.
-     * POPS classifies its writes as discarded, so MTC2/LWC2 omit the store
-     * while MFC2/SWC2 read stale data. Select the native word-store path;
-     * retain the surrounding register classes and special FIFO handlers. */
+    /* GTE data registers 23 (RES1) and 24 (MAC0) accept full 32-bit writes.
+     * POPS classifies their MTC2 writes as discarded while reads expose stale
+     * data. Select the native word-store path; retain surrounding register
+     * classes, memory-load handling and special FIFO handlers. */
     static const unsigned char gte_expected[32] = {
         2,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,
         0,0,0,0, 3,0,0,0, 3,0,0,0, 0,0,0,0
     };
     static const unsigned char gte_corrected[32] = {
         2,0,0,0, 2,0,0,0, 0,0,0,0, 0,0,0,0,
-        0,0,0,0, 0,0,0,0, 3,0,0,0, 0,0,0,0
+        0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0
     };
     error = np_patch_add(set, 0x0024a938, gte_expected, gte_corrected, sizeof(gte_expected));
     if (error) return error;
@@ -148,5 +148,33 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x2d,0x20,0x20,0x02, 0x01,0x00,0x07,0x24,
         0x80,0x15,0x06,0x00, 0x82,0x1a,0x06,0x00
     };
-    return np_patch_add(set, 0x0020d2d4, mdec_padding_expected, mdec_padding_corrected, sizeof(mdec_padding_expected));
+    error = np_patch_add(set, 0x0020d2d4, mdec_padding_expected, mdec_padding_corrected, sizeof(mdec_padding_expected));
+    if (error) return error;
+    /* MDEC Set Quant Table bit 0 selects one 64-byte table or both tables.
+     * An unconditional 128-byte copy consumes unrelated bytes and corrupts
+     * the retained chroma table after a luminance-only upload. Here a2 still
+     * holds the full command and a1 points to the native MDEC state. Derive
+     * the length, then retain the native copy, table rebuild and byte return.
+     * The adjacent guarded tail supplies the relocated return branch. */
+    static const unsigned char mdec_quant_expected[32] = {
+        0x59,0x00,0x04,0x3c, 0x2d,0x28,0xe0,0x00,
+        0xe0,0x7c,0x84,0x24, 0x80,0x27,0x08,0x0c,
+        0x80,0x00,0x06,0x24, 0x64,0x34,0x08,0x0c,
+        0x00,0x00,0x00,0x00, 0x0f,0x00,0x00,0x10
+    };
+    static const unsigned char mdec_quant_corrected[32] = {
+        0x01,0x00,0xc6,0x30, 0x01,0x00,0xc6,0x24,
+        0x80,0x31,0x06,0x00, 0x20,0x00,0xa4,0x24,
+        0x80,0x27,0x08,0x0c, 0x2d,0x28,0xe0,0x00,
+        0x64,0x34,0x08,0x0c, 0x00,0x00,0x00,0x00
+    };
+    error = np_patch_add(set, 0x0020dff8, mdec_quant_expected, mdec_quant_corrected, sizeof(mdec_quant_expected));
+    if (error) return error;
+    static const unsigned char mdec_quant_tail_expected[8] = {
+        0x2d,0x10,0x00,0x02, 0x00,0x00,0x00,0x00
+    };
+    static const unsigned char mdec_quant_tail_corrected[8] = {
+        0x0e,0x00,0x00,0x10, 0x2d,0x10,0x00,0x02
+    };
+    return np_patch_add(set, 0x0020e018, mdec_quant_tail_expected, mdec_quant_tail_corrected, sizeof(mdec_quant_tail_expected));
 }
