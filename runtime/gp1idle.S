@@ -4,6 +4,12 @@
  * Mirror the completed native control transaction without changing commands,
  * clock charges or completion policy. All other cases retain the native path.
  * The lease spans no live GPUSTAT read-modify-write across the worker wait. */
+#ifndef NP_GP1_EARLY_REJECT
+#define NP_GP1_EARLY_REJECT 0
+#endif
+#if NP_GP1_EARLY_REJECT < 0 || NP_GP1_EARLY_REJECT > 1
+#error "GP1 early rejection accepts a boolean build flag only"
+#endif
 #if NP_GP1_IDLE_CONTROL && !NP_MEMORY_ACCESS_TRACE
 .set noreorder
 .set noat
@@ -13,14 +19,33 @@
 np_gp1_idle_begin:
 np_gp1_idle_control:
  addiu $sp,$sp,-352
+#if NP_GP1_EARLY_REJECT
+ /* Preserve one temporary before filtering. Its original frame slot also
+  * serves the unchanged ownership transaction when both predicates pass. */
+ sq $8,112($sp)
+ srl $8,$a0,24
+ xori $8,$8,4
+ bnez $8,.Lgp1_early_native
+ nop
+ li $8,0x20b520
+ bne $ra,$8,.Lgp1_early_native
+ nop
+#endif
  sq $ra,0($sp)
  .irp reg,2,3,4,5,6,7,8,9,10,11,12,13,14,15,24,25
+#if NP_GP1_EARLY_REJECT
+ .if \reg != 8
+#endif
  .if \reg < 16
  sq $\reg,((\reg-1)*16)($sp)
  .else
  sq $\reg,((\reg-9)*16)($sp)
  .endif
+#if NP_GP1_EARLY_REJECT
+ .endif
+#endif
  .endr
+#if !NP_GP1_EARLY_REJECT
  srl $8,$a0,24
  li $9,4
  bne $8,$9,.Lgp1_native
@@ -28,6 +53,7 @@ np_gp1_idle_control:
  li $8,0x20b520
  bne $ra,$8,.Lgp1_native
  nop
+#endif
  mfc0 $v0,$12
  sw $v0,336($sp)
 .Lgp1_di:
@@ -177,13 +203,23 @@ np_gp1_idle_control:
  ei
 .Lgp1_native:
  .irp reg,2,3,4,5,6,7,8,9,10,11,12,13,14,15,24,25
+#if NP_GP1_EARLY_REJECT
+ .if \reg != 8
+#endif
  .if \reg < 16
  lq $\reg,((\reg-1)*16)($sp)
  .else
  lq $\reg,((\reg-9)*16)($sp)
  .endif
+#if NP_GP1_EARLY_REJECT
+ .endif
+#endif
  .endr
  lq $ra,0($sp)
+#if NP_GP1_EARLY_REJECT
+.Lgp1_early_native:
+ lq $8,112($sp)
+#endif
  addiu $sp,$sp,352
  move $s1,$a0
  srl $v1,$s1,24

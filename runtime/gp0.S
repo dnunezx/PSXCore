@@ -7,6 +7,12 @@
  * interrupt state and guest cycle accounting are untouched. */
     .set noreorder
     .set noat
+#ifndef NP_GP0_EMPTY_FLUSH_FASTPATH
+#define NP_GP0_EMPTY_FLUSH_FASTPATH 0
+#endif
+#if NP_GP0_EMPTY_FLUSH_FASTPATH < 0 || NP_GP0_EMPTY_FLUSH_FASTPATH > 1
+#error "GP0 empty flush accepts a boolean build flag only"
+#endif
 #if NP_GP0_PACKET_COALESCE < 0 || NP_GP0_PACKET_COALESCE > 1 || NP_GP0_SCALAR_WRITE < 0 || NP_GP0_SCALAR_WRITE > 1
 #error "GP0 adapters accept boolean build flags only"
 #endif
@@ -253,26 +259,47 @@ np_gp0_video_barrier:
     j 0x21aeb8
     nop
 np_gp0_flush:
-    /* Inspect the deferred flag using only two saved wide temporaries. Keep
-     * the original frame layout; an empty flush needs no syscall context. */
+    /* Keep the original frame layout. An empty flush needs no syscall context;
+     * the optional path also avoids preserving a second wide temporary. */
     addiu $sp,$sp,-96
     sq $8,64($sp)
+#if NP_GP0_EMPTY_FLUSH_FASTPATH
+    /* The empty path needs one temporary. Relocated displacements retain
+     * the original code size and leave the pending path's work unchanged. */
+    lui $8,%hi(np_gp0_records)
+    lw $8,%lo(np_gp0_records)($8)
+    beqz $8,np_gp0_flush_done
+    nop
+    sq $9,80($sp)
+#else
     sq $9,80($sp)
     la $8,np_gp0_records
     lw $9,0($8)
     beqz $9,np_gp0_flush_done
     nop
+#endif
     /* Native syscalls may change v0/v1. Save them, their argument and RA only
      * for a pending flush, before any clear, trace update or semaphore call. */
     sq $ra,0($sp)
     sq $v0,16($sp)
     sq $v1,32($sp)
     sq $a0,48($sp)
+#if NP_GP0_EMPTY_FLUSH_FASTPATH
+    lui $8,%hi(np_gp0_records)
+    sw $zero,%lo(np_gp0_records)($8)
+#else
     sw $zero,0($8)
+#endif
 #if NP_GP0_PACKET_TRACE
+#if NP_GP0_EMPTY_FLUSH_FASTPATH
+    lw $9,%lo(np_gp0_records+12)($8)
+    addiu $9,$9,1
+    sw $9,%lo(np_gp0_records+12)($8)
+#else
     lw $9,12($8)
     addiu $9,$9,1
     sw $9,12($8)
+#endif
 #else
     .space 12
 #endif
@@ -286,9 +313,14 @@ np_gp0_flush:
     lq $v0,16($sp)
     lq $v1,32($sp)
     lq $a0,48($sp)
+#if NP_GP0_EMPTY_FLUSH_FASTPATH
+    lq $9,80($sp)
+#endif
 np_gp0_flush_done:
     lq $8,64($sp)
+#if !NP_GP0_EMPTY_FLUSH_FASTPATH
     lq $9,80($sp)
+#endif
     jr $ra
     addiu $sp,$sp,96
     .balign 16

@@ -1,12 +1,43 @@
 /* Shared POPS DMA accounting: keep raster cost in the native worker budget, but
  * exclude it from linked GPU DMA completion accounting. All entries execute
  * inside the native interrupt-masked counter updates. No title RAM is read. */
+#ifndef NP_GPU_DMA_INLINE_ACCOUNTING
+#define NP_GPU_DMA_INLINE_ACCOUNTING 0
+#endif
+#if NP_GPU_DMA_INLINE_ACCOUNTING != 0 && NP_GPU_DMA_INLINE_ACCOUNTING != 1
+#error "Inline DMA accounting accepts a boolean build flag only"
+#endif
     .set noreorder
     .set noat
     .balign 16
     .macro DMA_RASTER name,cost,result,base,tail
     .globl \name
 \name:
+#if NP_GPU_DMA_INLINE_ACCOUNTING
+    /* Keep cost/result/base untouched until the original accounting update.
+     * Only two wide temporaries are needed; no shared-helper continuation. */
+    addiu $sp,$sp,-32
+    sq $8,0($sp)
+    sq $9,16($sp)
+    lui $8,0x0050
+    lw $8,0x6c30($8)
+    li $9,0x01000601
+    and $8,$8,$9
+    addiu $9,$9,-0x200
+    bne $8,$9,1f
+    lui $8,%hi(np_dma_raster_cost)
+    lw $9,%lo(np_dma_raster_cost)($8)
+    addu $9,$9,\cost
+    sw $9,%lo(np_dma_raster_cost)($8)
+1:
+    lq $8,0($sp)
+    lq $9,16($sp)
+    addiu $sp,$sp,32
+    addu \result,\result,\cost
+    sw \result,0x2260(\base)
+    j \tail
+    nop
+#else
     addiu $sp,$sp,-64
     sq $8,0($sp)
     sq $9,16($sp)
@@ -26,12 +57,14 @@
     sw \result,0x2260(\base)
     j \tail
     nop
+#endif
     .endm
     DMA_RASTER np_dma_fill_cost,$v0,$a0,$a1,0x21d5a0
     DMA_RASTER np_dma_sprite_cost,$v1,$v0,$a0,0x21eb3c
     DMA_RASTER np_dma_polygon_cost,$v1,$v0,$a0,0x21f9ec
     DMA_RASTER np_dma_line_cost,$v1,$v0,$a0,0x22065c
     DMA_RASTER np_dma_copy_cost,$v1,$v0,$a0,0x225f1c
+#if !NP_GPU_DMA_INLINE_ACCOUNTING
 np_dma_collect_raster:
     lui $10,0x0050
     lw $10,0x6c30($10)
@@ -47,6 +80,12 @@ np_dma_collect_raster:
 2:
     jr $9
     nop
+#else
+    /* Five original 76-byte entries plus their 64-byte collector reserve
+     * 444 bytes. Reject overflow and retain reset/harvest/counter locations,
+     * including the following MDEC helper's established storage boundary. */
+    .org np_dma_fill_cost+444,0
+#endif
 
     .macro DMA_RESET name,base,tail
     .globl \name
