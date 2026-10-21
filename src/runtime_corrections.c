@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 20) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 27) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -242,6 +242,7 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     error = np_patch_add(set, 0x002036ec, gte_swc_loop_expected, gte_swc_loop_corrected, sizeof(gte_swc_loop_expected));
     if (error) return error;
     /* LWC2 to SXYP, IRGB or LZCS requires native FIFO/conversion work.
+     * Read-only ORGB/LZCR must also use the scalar discard path.
      * Reject a group if either its current or following register is
      * special; checking only the current one appends an unprocessed
      * special load. Use a register-bit mask and keep the four-entry
@@ -251,7 +252,7 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
         0x0f, 0x00, 0x18, 0x24
     };
     static const unsigned char gte_lwc_mask_corrected[12] = {
-        0x00, 0x50, 0x11, 0x3c, 0x00, 0x80, 0x31, 0x36,
+        0x00, 0xf0, 0x11, 0x3c, 0x00, 0x80, 0x31, 0x36,
         0x04, 0x00, 0x19, 0x24
     };
     error = np_patch_add(set, 0x00203a60, gte_lwc_mask_expected, gte_lwc_mask_corrected, sizeof(gte_lwc_mask_expected));
@@ -284,5 +285,95 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     static const unsigned char gte_lwc_loop_corrected[4] = {
         0xdb, 0xff, 0x59, 0x15
     };
-    return np_patch_add(set, 0x00203b08, gte_lwc_loop_expected, gte_lwc_loop_corrected, sizeof(gte_lwc_loop_expected));
+    error = np_patch_add(set, 0x00203b08, gte_lwc_loop_expected, gte_lwc_loop_corrected, sizeof(gte_lwc_loop_expected));
+    if (error) return error;
+    /* SXYP reads alias SXY2; its separate backing word is only a write
+     * staging slot. Remap scalar reads after allocation, and each grouped
+     * store's source before encoding. Preserve all write/FIFO handlers. */
+    static const unsigned char gte_mfc_sxyp_expected[8] = {
+        0xff, 0xff, 0x10, 0x32, 0x00, 0x8c, 0x02, 0x3c,
+    };
+    static const unsigned char gte_mfc_sxyp_corrected[8] = {
+        0x15, 0xde, 0x03, 0x08, 0xff, 0xff, 0x10, 0x32,
+    };
+    error = np_patch_add(set, 0x00207a28, gte_mfc_sxyp_expected, gte_mfc_sxyp_corrected, sizeof(gte_mfc_sxyp_expected));
+    if (error) return error;
+    static const unsigned char gte_swc_sxyp_expected[8] = {
+        0xff, 0xff, 0xa5, 0x30, 0x00, 0x14, 0x02, 0x00,
+    };
+    static const unsigned char gte_swc_sxyp_corrected[8] = {
+        0x1a, 0xde, 0x03, 0x08, 0xff, 0xff, 0xa5, 0x30,
+    };
+    error = np_patch_add(set, 0x00207b58, gte_swc_sxyp_expected, gte_swc_sxyp_corrected, sizeof(gte_swc_sxyp_expected));
+    if (error) return error;
+    static const unsigned char gte_swc_sxyp_group_expected[32] = {
+        0x00, 0x8c, 0x0b, 0x3c, 0x80, 0x03, 0x09, 0x3c,
+        0x03, 0x00, 0x06, 0x3c, 0x04, 0x00, 0x25, 0x26,
+        0x01, 0x00, 0x08, 0x3c, 0x00, 0x00, 0xa2, 0x94,
+        0x0c, 0x00, 0xa5, 0x24, 0x25, 0x20, 0xc9, 0x00,
+    };
+    static const unsigned char gte_swc_sxyp_group_corrected[32] = {
+        0x80, 0x8f, 0x0b, 0x3c, 0xe8, 0x01, 0x09, 0x24,
+        0x03, 0x00, 0x06, 0x3c, 0x04, 0x00, 0x25, 0x26,
+        0x01, 0x00, 0x08, 0x3c, 0x00, 0x00, 0xa2, 0x94,
+        0x0c, 0x00, 0xa5, 0x24, 0x14, 0xfe, 0x44, 0x24,
+    };
+    error = np_patch_add(set, 0x0020669c, gte_swc_sxyp_group_expected, gte_swc_sxyp_group_corrected, sizeof(gte_swc_sxyp_group_expected));
+    if (error) return error;
+    static const unsigned char gte_swc_sxyp_group_tail_expected[32] = {
+        0x21, 0x30, 0xc8, 0x00, 0x25, 0x10, 0x4b, 0x00,
+        0x01, 0x00, 0xe7, 0x24, 0x25, 0x10, 0x44, 0x00,
+        0x2b, 0x18, 0xf0, 0x00, 0x00, 0x00, 0x42, 0xad,
+        0xf6, 0xff, 0x60, 0x14, 0x04, 0x00, 0x4a, 0x25,
+    };
+    static const unsigned char gte_swc_sxyp_group_tail_corrected[32] = {
+        0x0a, 0x10, 0x24, 0x01, 0x25, 0x20, 0xcb, 0x00,
+        0x25, 0x10, 0x44, 0x00, 0x21, 0x30, 0xc8, 0x00,
+        0x01, 0x00, 0xe7, 0x24, 0x00, 0x00, 0x42, 0xad,
+        0xf6, 0xff, 0xf0, 0x14, 0x04, 0x00, 0x4a, 0x25,
+    };
+    error = np_patch_add(set, 0x002066bc, gte_swc_sxyp_group_tail_expected, gte_swc_sxyp_group_tail_corrected, sizeof(gte_swc_sxyp_group_tail_expected));
+    if (error) return error;
+    /* H is unsigned during projection, but CFC2 sign-extends bit 15.
+     * The native projection uses LHU; select the existing signed-halfword
+     * MTC2 formatter to canonicalize its readback without changing H/65536. */
+    static const unsigned char gte_h_write_expected[4] = {
+        0x02, 0x00, 0x00, 0x00,
+    };
+    static const unsigned char gte_h_write_corrected[4] = {
+        0x01, 0x00, 0x00, 0x00,
+    };
+    error = np_patch_add(set, 0x0024a9d8, gte_h_write_expected, gte_h_write_corrected, sizeof(gte_h_write_expected));
+    if (error) return error;
+    /* ORGB/LZCR ignore writes. Keep the scalar LWC2 source read (including
+     * memory side effects), then emit NOP instead of its GTE store for these
+     * two destinations. Fold cursor increments to fit the native epilogue;
+     * ordinary emitted instructions and return cursors remain identical. */
+    static const unsigned char gte_lwc_readonly_expected[32] = {
+        0x00, 0x00, 0x42, 0xad, 0x04, 0x00, 0x4a, 0x25,
+        0x00, 0x00, 0x47, 0xad, 0x04, 0x00, 0x4a, 0x25,
+        0x00, 0x00, 0x46, 0xad, 0x04, 0x00, 0x4a, 0x25,
+        0x18, 0x00, 0xb1, 0xdf, 0x25, 0x20, 0x83, 0x00,
+    };
+    static const unsigned char gte_lwc_readonly_corrected[32] = {
+        0x00, 0x00, 0x42, 0xad, 0x04, 0x00, 0x47, 0xad,
+        0x08, 0x00, 0x46, 0xad, 0x25, 0x20, 0x83, 0x00,
+        0xf7, 0xff, 0x85, 0x30, 0xdc, 0xfd, 0xa5, 0x24,
+        0x0a, 0x20, 0x05, 0x00, 0x18, 0x00, 0xb1, 0xdf,
+    };
+    error = np_patch_add(set, 0x00206460, gte_lwc_readonly_expected, gte_lwc_readonly_corrected, sizeof(gte_lwc_readonly_expected));
+    if (error) return error;
+    static const unsigned char gte_lwc_readonly_tail_expected[24] = {
+        0x20, 0x00, 0xb2, 0xdf, 0x04, 0x00, 0x42, 0x25,
+        0x28, 0x00, 0xbf, 0xdf, 0x00, 0x00, 0x44, 0xad,
+        0x08, 0x00, 0xe0, 0x03, 0x30, 0x00, 0xbd, 0x27,
+    };
+    static const unsigned char gte_lwc_readonly_tail_corrected[24] = {
+        0x20, 0x00, 0xb2, 0xdf, 0x10, 0x00, 0x42, 0x25,
+        0x28, 0x00, 0xbf, 0xdf, 0x0c, 0x00, 0x44, 0xad,
+        0x08, 0x00, 0xe0, 0x03, 0x30, 0x00, 0xbd, 0x27,
+    };
+    error = np_patch_add(set, 0x00206480, gte_lwc_readonly_tail_expected, gte_lwc_readonly_tail_corrected, sizeof(gte_lwc_readonly_tail_expected));
+    if (error) return error;
+    return NULL;
 }

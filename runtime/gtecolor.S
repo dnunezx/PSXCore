@@ -30,6 +30,25 @@ np_gte_orgb:
     nop
     .globl np_gte_orgb_end
 np_gte_orgb_end:
+    /* Compiler adapters occupy the former alignment padding. These run
+     * after native register allocation and use only caller-clobbered GPRs.
+     * Preserve the displaced mask/opcode operations and the existing input
+     * and zero-depth helper entry addresses. */
+    .globl np_gte_mfc_sxyp,np_gte_swc_sxyp,np_gte_sxyp_end
+np_gte_mfc_sxyp:
+    addiu $v0,$s0,-492
+    addiu $a1,$zero,488
+    movz $s0,$a1,$v0
+    j 0x207a30
+    lui $v0,0x8c00
+np_gte_swc_sxyp:
+    addiu $v1,$a1,-492
+    addiu $a0,$zero,488
+    movz $a1,$a0,$v1
+    lui $v1,0x8c00
+    j 0x207b60
+    sll $v0,$v0,16
+np_gte_sxyp_end:
     /* Keep the existing input/zero-depth helper addresses. */
     .balign 128
     .globl np_gte_irgb

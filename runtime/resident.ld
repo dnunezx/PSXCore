@@ -50,6 +50,10 @@ ASSERT(. <= 0x000f7800, "runtime return-load helpers overflow")
  KEEP(*(._psxcore_gte_color))
 } :resident
 ASSERT(. <= 0x000f7900, "runtime GTE color helper overflow")
+/* Shared runtime corrections contain guarded absolute compiler redirects. */
+ASSERT(np_gte_mfc_sxyp == 0x000f7854, "runtime SXYP MFC adapter moved")
+ASSERT(np_gte_swc_sxyp == 0x000f7868, "runtime SXYP SWC adapter moved")
+ASSERT(np_gte_sxyp_end <= 0x000f7880, "runtime SXYP adapters overlap color input")
 .interlace_scanout 0x000f7900: {
  KEEP(*(._psxcore_interlace_scanout))
  KEEP(*(._psxcore_igr_probe_stack))
