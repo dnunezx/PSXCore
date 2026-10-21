@@ -13,6 +13,20 @@
 #if NP_GP0_EMPTY_FLUSH_FASTPATH < 0 || NP_GP0_EMPTY_FLUSH_FASTPATH > 1
 #error "GP0 empty flush accepts a boolean build flag only"
 #endif
+#ifndef NP_GP0_PUBLISH_TWO_TEMPS
+#define NP_GP0_PUBLISH_TWO_TEMPS 0
+#endif
+#if NP_GP0_PUBLISH_TWO_TEMPS < 0 || NP_GP0_PUBLISH_TWO_TEMPS > 1
+#error "GP0 publish temporary selection accepts a boolean build flag only"
+#endif
+#if NP_GP0_PUBLISH_TWO_TEMPS
+/* Both exits replace v0: deferred returns a0; native PollSema supplies v0.
+ * Scalar operations preserve its upper half. Retain the original frame and
+ * native producer offsets while leaving temporary $10 untouched. */
+#define NP_GP0_PUBLISH_TMP $v0
+#else
+#define NP_GP0_PUBLISH_TMP $10
+#endif
 #if NP_GP0_PACKET_COALESCE < 0 || NP_GP0_PACKET_COALESCE > 1 || NP_GP0_SCALAR_WRITE < 0 || NP_GP0_SCALAR_WRITE > 1
 #error "GP0 adapters accept boolean build flags only"
 #endif
@@ -29,7 +43,9 @@ np_gp0_publish:
     addiu $sp,$sp,-48
     sq $8,0($sp)
     sq $9,16($sp)
+#if !NP_GP0_PUBLISH_TWO_TEMPS
     sq $10,32($sp)
+#endif
     la $8,np_gp0_records
 #if NP_GP0_PACKET_TRACE
     lw $9,4($8)
@@ -46,15 +62,15 @@ np_gp0_publish:
     beqz $9,np_gp0_native
     nop
     ld $9,88($sp)
-    li $10,0x20b510
-    bne $9,$10,np_gp0_native
+    li NP_GP0_PUBLISH_TMP,0x20b510
+    bne $9,NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
     li $9,1
     bne $s2,$9,np_gp0_native
     nop
     lw $9,0x2270($s0)
-    li $10,0xffffff
-    bne $9,$10,np_gp0_native
+    li NP_GP0_PUBLISH_TMP,0xffffff
+    bne $9,NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
     lw $9,0x227c($s0)
     bnez $9,np_gp0_native
@@ -63,15 +79,15 @@ np_gp0_publish:
     bnez $9,np_gp0_native
     nop
     lw $9,0x22bc($s0)
-    li $10,-1
-    bne $9,$10,np_gp0_native
+    li NP_GP0_PUBLISH_TMP,-1
+    bne $9,NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
     lw $9,0x228c($s0)
     bnez $9,np_gp0_native
     nop
     lw $9,0x2140($s0)
-    addiu $10,$s0,0x20c0
-    bne $9,$10,np_gp0_native
+    addiu NP_GP0_PUBLISH_TMP,$s0,0x20c0
+    bne $9,NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
     lw $9,0($9)
     srl $9,$9,24
@@ -79,36 +95,36 @@ np_gp0_publish:
      * third word is present, publish immediately: the native worker owns all
      * pixel acquisition, transfer completion and buffer reuse. This also
      * excludes data words while the worker's active-command field is set. */
-    addiu $10,$9,-0xa0
-    beqz $10,np_gp0_fixed
+    addiu NP_GP0_PUBLISH_TMP,$9,-0xa0
+    beqz NP_GP0_PUBLISH_TMP,np_gp0_fixed
     nop
     /* Fixed polygons 20..3f, lines 40..47/50..57, rectangles 60..7f.
      * Exclude variable polylines despite their table's fixed initial length. */
-    addiu $10,$9,-0x20
-    sltiu $10,$10,0x28
-    bnez $10,np_gp0_fixed
+    addiu NP_GP0_PUBLISH_TMP,$9,-0x20
+    sltiu NP_GP0_PUBLISH_TMP,NP_GP0_PUBLISH_TMP,0x28
+    bnez NP_GP0_PUBLISH_TMP,np_gp0_fixed
     nop
-    addiu $10,$9,-0x50
-    sltiu $10,$10,8
-    bnez $10,np_gp0_fixed
+    addiu NP_GP0_PUBLISH_TMP,$9,-0x50
+    sltiu NP_GP0_PUBLISH_TMP,NP_GP0_PUBLISH_TMP,8
+    bnez NP_GP0_PUBLISH_TMP,np_gp0_fixed
     nop
-    addiu $10,$9,-0x60
-    sltiu $10,$10,0x20
-    beqz $10,np_gp0_native
+    addiu NP_GP0_PUBLISH_TMP,$9,-0x60
+    sltiu NP_GP0_PUBLISH_TMP,NP_GP0_PUBLISH_TMP,0x20
+    beqz NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
 np_gp0_fixed:
     sll $9,$9,3
-    li $10,0x4ff5c0
-    addu $9,$9,$10
+    li NP_GP0_PUBLISH_TMP,0x4ff5c0
+    addu $9,$9,NP_GP0_PUBLISH_TMP
     lw $9,0($9)
-    addiu $10,$9,-2
-    sltiu $10,$10,11
-    beqz $10,np_gp0_native
+    addiu NP_GP0_PUBLISH_TMP,$9,-2
+    sltiu NP_GP0_PUBLISH_TMP,NP_GP0_PUBLISH_TMP,11
+    beqz NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
-    lw $10,0x2288($s0)
-    beqz $10,np_gp0_native
+    lw NP_GP0_PUBLISH_TMP,0x2288($s0)
+    beqz NP_GP0_PUBLISH_TMP,np_gp0_native
     nop
-    sltu $9,$10,$9
+    sltu $9,NP_GP0_PUBLISH_TMP,$9
     beqz $9,np_gp0_native
     nop
 np_gp0_defer:
@@ -126,7 +142,9 @@ np_gp0_defer:
 #endif
     lq $8,0($sp)
     lq $9,16($sp)
+#if !NP_GP0_PUBLISH_TWO_TEMPS
     lq $10,32($sp)
+#endif
     addiu $sp,$sp,48
     move $v0,$a0
     ld $s1,8($sp)
@@ -143,12 +161,23 @@ np_gp0_native:
     sw $zero,0($8)
     lq $8,0($sp)
     lq $9,16($sp)
+#if !NP_GP0_PUBLISH_TWO_TEMPS
     lq $10,32($sp)
+#endif
     addiu $sp,$sp,48
     /* Replay PollSema, then the intact native epilogue and SignalSema. */
     li $ra,0x21a97c
     j 0x22e870
     nop
+
+#if NP_GP0_PUBLISH_TWO_TEMPS
+    /* Replace the removed SQ and native LQ in unused, unreachable space.
+     * The coalescing path also loses its deferred LQ. Keep later entries fixed. */
+    .space 8
+#if NP_GP0_PACKET_COALESCE
+    .space 4
+#endif
+#endif
 
 #if NP_GP0_SCALAR_WRITE
     .globl np_gp0_scalar_write
