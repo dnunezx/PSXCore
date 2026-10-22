@@ -53,9 +53,6 @@ np_gp0_publish:
     sw $9,4($8)
     mfc0 $9,$9
     sw $9,16($8)
-#else
-    /* Keep resident entry addresses stable when omitting diagnostic work. */
-    .space 20
 #endif
 #if NP_GP0_PACKET_COALESCE
     lw $9,20($8)
@@ -137,8 +134,6 @@ np_gp0_defer:
     lw $9,8($8)
     addiu $9,$9,1
     sw $9,8($8)
-#else
-    .space 12
 #endif
     lq $8,0($sp)
     lq $9,16($sp)
@@ -169,6 +164,15 @@ np_gp0_native:
     li $ra,0x21a97c
     j 0x22e870
     nop
+
+#if !NP_GP0_PACKET_TRACE
+    /* Tracing is off. Keep its reserved bytes after the unconditional native
+     * exit, preserving later public entries without executing blank words. */
+    .space 20
+#if NP_GP0_PACKET_COALESCE
+    .space 12
+#endif
+#endif
 
 #if NP_GP0_PUBLISH_TWO_TEMPS
     /* Replace the removed SQ and native LQ in unused, unreachable space.
@@ -329,8 +333,6 @@ np_gp0_flush:
     addiu $9,$9,1
     sw $9,12($8)
 #endif
-#else
-    .space 12
 #endif
     lui $8,0x7000
     jal 0x22e870
@@ -352,6 +354,10 @@ np_gp0_flush_done:
 #endif
     jr $ra
     addiu $sp,$sp,96
+#if !NP_GP0_PACKET_TRACE
+    /* Both empty and pending paths return above; record addresses stay fixed. */
+    .space 12
+#endif
     .balign 16
 np_gp0_records:
     /* Sole CPU-producer writer: deferred flag, calls, deferred wakes,

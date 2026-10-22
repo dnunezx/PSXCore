@@ -75,10 +75,6 @@ np_packet_fast:
     addu $4,$4,$5
     lq $18,%lo(packet_formats)($4)
     sq $18,16($11)
-    lui $2,%hi(np_packet_fast_count)
-    lw $3,%lo(np_packet_fast_count)($2)
-    addiu $3,$3,1
-    sw $3,%lo(np_packet_fast_count)($2)
     /* Aligned packet end has its next native header at end+12. */
     addiu $9,$10,12
     j 0x21f7d4
@@ -87,6 +83,9 @@ packet_native:
     srl $17,$21,8
     j 0x21f638
     addiu $9,$20,0x330c
+    /* Keep every public/table address fixed after the unconditional fallback
+     * exit. The former diagnostic counter no longer runs per polygon. */
+    .space 16
     .balign 16
     /* Index order: blending, texture, Gouraud shading, triangle. */
     .macro packet_format blend,texture,shade,triangle
