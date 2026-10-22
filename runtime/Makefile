@@ -17,7 +17,9 @@ main.o: gteintpl_patch.h
 EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h
+NP_PACKET_FIXED_PADDING ?= 1
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
+EE_CFLAGS += -DNP_PACKET_FIXED_PADDING=$(NP_PACKET_FIXED_PADDING)
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
 NP_MEMORY_SCRATCH_FASTPATH ?= 1

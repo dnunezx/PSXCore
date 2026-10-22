@@ -1,3 +1,9 @@
+#ifndef NP_PACKET_FIXED_PADDING
+#define NP_PACKET_FIXED_PADDING 1
+#endif
+#if NP_PACKET_FIXED_PADDING != 0 && NP_PACKET_FIXED_PADDING != 1
+#error "Fixed packet padding requires a boolean"
+#endif
 /* Construct the pinned POPS base polygon packet with aligned constant copies.
  * Preserve geometry, GS/VIF commands, costs and the native chain finalizer.
  * Runs after palette refresh, bounds publication and all graphics-state work.
@@ -77,15 +83,36 @@ np_packet_fast:
     sq $18,16($11)
     /* Aligned packet end has its next native header at end+12. */
     addiu $9,$10,12
+#if NP_PACKET_FIXED_PADDING
+    /* The guarded packet and its 160-byte extent are 16-byte aligned.
+     * The native loop therefore writes exactly three zero padding words.
+     * Keep each zero and cursor publication in the same order, then rejoin
+     * native header construction and its full-width register epilogue. */
+    sw $zero,152($11)
+    sw $zero,0($10)
+    addiu $3,$10,4
+    sw $3,0($16)
+    sw $zero,4($10)
+    addiu $3,$10,8
+    sw $3,0($16)
+    sw $zero,8($10)
+    sw $9,0($16)
+    move $10,$9
+    j 0x21f7fc
+    addiu $8,$zero,1
+#else
     j 0x21f7d4
     addiu $8,$zero,1
+#endif
 packet_native:
     srl $17,$21,8
     j 0x21f638
     addiu $9,$20,0x330c
     /* Keep every public/table address fixed after the unconditional fallback
      * exit. The former diagnostic counter no longer runs per polygon. */
+#if !NP_PACKET_FIXED_PADDING
     .space 16
+#endif
     .balign 16
     /* Index order: blending, texture, Gouraud shading, triangle. */
     .macro packet_format blend,texture,shade,triangle
