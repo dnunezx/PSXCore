@@ -1,19 +1,9 @@
 #include "gamepatches.h"
 #include <string.h>
-#ifndef NP_RAYMAN_LOADER_RETIRE
-#define NP_RAYMAN_LOADER_RETIRE 1
-#endif
-#if NP_RAYMAN_LOADER_RETIRE != 0 && NP_RAYMAN_LOADER_RETIRE != 1
-#error "Rayman loader retirement requires a boolean"
-#endif
-#if NP_RAYMAN_LOADER_RETIRE
 extern const NpGamePatch np_game_patch_rayman2;
-#endif
 /* Add game modules here; main.c contains no title matching or installers. */
 static const NpGamePatch *const patches[]={
-#if NP_RAYMAN_LOADER_RETIRE
     &np_game_patch_rayman2,
-#endif
     NULL
 };
 const char *np_game_patch_expect(const NpGamePatchContext *c,
