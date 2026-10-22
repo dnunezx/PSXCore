@@ -3,6 +3,8 @@ EE_BIN = psxcore.elf
 FILE_MODULES = iomanX fileXio ps2dev9 bdm bdmfs_fatfs ata_bd usbd usbmass_bd poweroff psxcore_powerbutton psxcore_nativegate psxcore_filebridge psxcore_iomanx bdma_usb_fs bdma_usb_bd bdma_ata_fs bdma_ata_bd psxcore_massproxy
 EE_OBJS = reverbexact.o main.o startup_diag.o file_storage.o file.o file_patch.o vcd.o sha1.o transfer.o hooks.o memoryaccess.o memoryaccess_asm.o returndelay.o gtecolor.o rgb24.o gp0.o loopcycles.o codeguard_asm.o codeguard.o boot_elf.o boot_sha256.o compat.o launch.o patch.o runtime_corrections.o $(addsuffix _irx.o,$(FILE_MODULES))
 EE_INCS = -I../../include
+EE_OBJS += gamepatches.o
+main.o gamepatches.o gamepatches/rayman2.o: gamepatches.h
 EE_OBJS += igrobserve.o
 EE_OBJS += igrwait.o
 EE_OBJS += igrquit.o
@@ -20,7 +22,7 @@ main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcor
 NP_PACKET_FIXED_PADDING ?= 1
 NP_RAYMAN_LOADER_RETIRE ?= 1
 ifeq ($(NP_RAYMAN_LOADER_RETIRE),1)
-EE_OBJS += loaderretire.o
+EE_OBJS += loaderretire.o gamepatches/rayman2.o
 endif
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_CFLAGS += -DNP_PACKET_FIXED_PADDING=$(NP_PACKET_FIXED_PADDING)
