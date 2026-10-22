@@ -41,16 +41,6 @@ ASSERT(. <= 0x000ec800, "runtime GTE transfer adapter overflow")
  np_cd_order_end = .;
 } :resident
 ASSERT(. <= 0x000f0000, "runtime CD order arena overflow")
-/* Shared command arithmetic: below existing helpers, above CD ordering. */
-.arithmetic 0x000ece00: {
- np_arithmetic_begin = .;
- KEEP(*(._psxcore_arithmetic))
- arithmetic.o(.text .text.* .rodata .rodata.*)
- np_arithmetic_end = .;
-} :resident
-ASSERT(ADDR(.cd_order)+SIZEOF(.cd_order)<=0x000ece00,
-       "runtime CD ordering overlaps arithmetic")
-ASSERT(. <= 0x000f0000, "runtime arithmetic overlaps diagnostics")
 .diagnostic 0x000f0000: {
  KEEP(*(._psxcore_hooks))
  KEEP(*(._psxcore_memory))
