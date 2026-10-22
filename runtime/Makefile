@@ -14,6 +14,12 @@ EE_OBJS += clutrefresh.o
 main.o: polygonpacket_patch.h
 EE_OBJS += gteintpl.o
 main.o: gteintpl_patch.h
+EE_OBJS += arithmetic.o arithmetic_asm.o
+main.o: arithmetic_patch.h
+arithmetic.o: arithmetic.c
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Os -G0 -fno-builtin -fno-jump-tables -fno-tree-loop-distribute-patterns -fwrapv -c $< -o $@
+arithmetic_asm.o: arithmetic.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h

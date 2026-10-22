@@ -28,6 +28,9 @@ extern char np_cd_order_begin[],np_cd_order_end[];
 #endif
 #include "saveguards.h"
 #include "gteintpl_patch.h"
+#include "arithmetic_patch.h"
+extern char np_arithmetic_begin[],np_arithmetic_end[];
+extern void np_arithmetic_compile(void),np_gte_arithmetic(void),np_mdec_arithmetic(void);
 extern void np_gte_intpl_begin(void),np_gte_intpl_compile(void);
 extern void np_gte_intpl_signed(void),np_gte_intpl_clamp(void),np_gte_intpl_end(void);
 #if NP_CD_SWAP
@@ -312,6 +315,8 @@ static int install_mdec_block_fastpaths(void) {
         {0x0c0827bc,0x00c0802d,0x0220102d,0x26310002}};
     if(begin<0xf3cd0 || end<=begin || end>0xf4cd0)return -1;
     for(unsigned i=0;i<4;++i) {
+        /* Shared arithmetic owns IDCT entry in both fast/native builds. */
+        if(i==0)continue;
         if(hooks[i]<begin || hooks[i]>=end || (hooks[i]&3))return -1;
         const uint32_t replacement[4]={(i==3?0x0c000000u:0x08000000u)|((uint32_t)hooks[i]>>2),
             i==3?expected[i][1]:0,expected[i][2],expected[i][3]};
@@ -1038,6 +1043,10 @@ int main(int argc,char **argv) {
     error=np_gte_intpl_plan(&patch_set,(uintptr_t)np_gte_intpl_begin,
         (uintptr_t)np_gte_intpl_compile,(uintptr_t)np_gte_intpl_signed,
         (uintptr_t)np_gte_intpl_clamp,(uintptr_t)np_gte_intpl_end);
+    if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+    error=np_arithmetic_plan(&patch_set,(uintptr_t)np_arithmetic_begin,
+        (uintptr_t)np_arithmetic_compile,(uintptr_t)np_gte_arithmetic,
+        (uintptr_t)np_mdec_arithmetic,(uintptr_t)np_arithmetic_end);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     /* Native/file launches use the per-game compatibility selection.
      * Legacy diagnostic modes retain the original exact-check behavior. */

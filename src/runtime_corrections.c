@@ -3,7 +3,7 @@
 
 const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     if (runtime != NP_RUNTIME_KNOWN) return "core-runtime";
-    if (!set || set->count > NP_PATCH_LIMIT - 27) return "patch-input";
+    if (!set || set->count > NP_PATCH_LIMIT - 28) return "patch-input";
     /* POPS texture-window handler: select GS repeat for an unmasked axis.
      * The masked-axis branch still selects region repeat. This shared default
      * fixes scrolling textures; it is not a title-specific sky override. */
@@ -375,5 +375,16 @@ const char *np_runtime_correct(uint32_t runtime, NpPatchSet *set) {
     };
     error = np_patch_add(set, 0x00206480, gte_lwc_readonly_tail_expected, gte_lwc_readonly_tail_corrected, sizeof(gte_lwc_readonly_tail_expected));
     if (error) return error;
-    return NULL;
+    /* FLAG accepts bits 12..30 and derives bit 31 from bits 30..23/18..13.
+     * Its native class-3 formatter discards the write. The resident adapter
+     * handles only FLAG's offset after native source allocation; all other
+     * discarded destinations and ordinary control writes retain their paths.
+     * Guard the complete discarded-case branch, delay slot and padding. */
+    static const unsigned char gte_flag_write_expected[12] = {
+        0x1a,0x00,0x00,0x10, 0x2d,0x10,0x40,0x01, 0,0,0,0
+    };
+    static const unsigned char gte_flag_write_corrected[12] = {
+        0x00,0xb0,0x03,0x08, 0x2d,0x10,0x40,0x01, 0,0,0,0
+    };
+    return np_patch_add(set, 0x00207acc, gte_flag_write_expected, gte_flag_write_corrected, sizeof(gte_flag_write_expected));
 }

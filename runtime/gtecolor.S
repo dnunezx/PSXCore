@@ -93,3 +93,56 @@ np_gte_zero_depth:
     j 0x208a8c
     nop
 np_gte_zero_depth_end:
+
+/* The class-3 write formatter arrives with its original stack frame, source
+ * allocation at 0(sp), destination offset in s1 and output cursor in r10/v0.
+ * s0 was already restored in the native branch delay slot. Only FLAG's
+ * offset is handled here; the native epilogue restores the remaining state. */
+    .section ._psxcore_gte_transfer,"ax",@progbits
+    .balign 16
+    .globl np_gte_flag_write,np_gte_flag_write_end
+np_gte_flag_write:
+    addiu $v1,$s1,-684
+    bnez $v1,3f
+    nop
+    lui $a0,%hi(np_gte_flag_template)
+    addiu $a0,$a0,%lo(np_gte_flag_template)
+    addiu $a1,$zero,12
+1:
+    lw $a2,0($a0)
+    addiu $a0,$a0,4
+    sw $a2,0($10)
+    addiu $a1,$a1,-1
+    bnez $a1,1b
+    addiu $10,$10,4
+    lw $a0,0($sp)
+    sll $a1,$a0,16
+    lw $a2,-48($10)
+    or $a2,$a2,$a1
+    sw $a2,-48($10)
+    sll $a1,$a0,21
+    lw $a2,-24($10)
+    or $a2,$a2,$a1
+    sw $a2,-24($10)
+    move $v0,$10
+3:
+    j 0x207b38
+    nop
+np_gte_flag_template:
+    /* Generated code uses only POPS's reserved v0 scratch, preserving the
+     * allocated source and RAM mask. Clear reserved bits and incoming bit31,
+     * then set the summary byte only when a selected input bit is present.
+     * Both stores address FLAG; neighboring GTE state is never touched. */
+    .word 0x00001040 /* SLL v0,source,1; rt supplied by the allocator. */
+    .word 0x00021342 /* SRL v0,v0,13 */
+    .word 0x00021300 /* SLL v0,v0,12 */
+    .word 0xaf8202ac /* SW v0,FLAG(gp) */
+    .word 0x3c027f87 /* LUI v0,0x7f87 */
+    .word 0x3442e000 /* ORI v0,v0,0xe000 */
+    .word 0x00021024 /* AND v0,source,v0; rs supplied by the allocator. */
+    .word 0x10400004 /* BEQZ v0,end */
+    .word 0
+    .word 0x938202af /* LBU v0,FLAG+3(gp) */
+    .word 0x34420080 /* ORI v0,v0,0x80 */
+    .word 0xa38202af /* SB v0,FLAG+3(gp) */
+np_gte_flag_write_end:
