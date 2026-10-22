@@ -1,3 +1,9 @@
+#ifndef NP_MEMORY_SCRATCH_FASTPATH
+#define NP_MEMORY_SCRATCH_FASTPATH 1
+#endif
+#if NP_MEMORY_SCRATCH_FASTPATH != 0 && NP_MEMORY_SCRATCH_FASTPATH != 1
+#error "Scratch fast path requires a boolean"
+#endif
 /* Original guard calls for POPS-generated scalar memory accesses. Existing
  * native I/O handlers retain register preservation and guest cycle charges.
  * No exception synthesis, guest clock change or interpreter fallback. */
@@ -120,8 +126,26 @@ np_memory_group_plan_failed:
      * helper entry address, register contract or guest cycle charge. */
     dsrl $a2,$v1,23
     beqz $a2,\name\()_ram
+#if NP_MEMORY_SCRATCH_FASTPATH
+    nop
+    lui $a2,0x1f80
+    /* RAM keeps the same seven instructions. On the other route, recognize
+     * the frequent 1 KiB scratchpad before device/expansion/ROM checks. */
+    subu $a2,$v1,$a2
+    sltiu $a2,$a2,0x400
+    .if \store
+    bnezl $a2,\name\()_ram
+    lui $a3,0x0008
+    .else
+    /* Refund only selected scratch reads. The access itself remains at its
+     * original PC outside every branch delay slot, including on faults. */
+    bnezl $a2,\name\()_scratch
+    lui $a3,0x0008
+    .endif
+#else
     nop
     nop /* Keep cold paths and resident entry addresses fixed. */
+#endif
 #endif
     lui $a2,0x1f80
     ori $a2,$a2,0x1000
@@ -164,6 +188,18 @@ np_memory_group_plan_failed:
     sltu $a2,$a2,$a3
     bnez $a2,\name\()_ram
     nop
+#if NP_MEMORY_SCRATCH_FASTPATH && NP_MEMORY_RAM_FASTPATH
+    /* Scratch was handled above. Keep the original RAM/fault/IO addresses;
+     * the final word is reached only by selected scratchpad reads. */
+    b np_memory_unknown_address
+    nop
+    .if \store
+    nop
+    .else
+\name\()_scratch:
+    addiu $k1,$k1,4
+    .endif
+#else
     lui $a2,0x1f80
     subu $a2,$v1,$a2
     sltiu $a2,$a2,0x400
@@ -183,6 +219,7 @@ np_memory_group_plan_failed:
     b \name\()_ram
     addiu $k1,$k1,4
     .endif
+#endif
 \name\()_ram:
     .if \store
     \instruction $a1,0($v0)
