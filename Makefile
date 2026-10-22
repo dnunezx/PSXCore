@@ -14,6 +14,8 @@ export NP_MEMORY_ADDRESS_PRECOMPUTE
 NP_GP0_PACKET_COALESCE ?= 1
 NP_GPU_PACKET_FASTPATH ?= 1
 NP_PACKET_FIXED_PADDING ?= 1
+NP_RAYMAN_LOADER_RETIRE ?= 1
+export NP_RAYMAN_LOADER_RETIRE
 export NP_PACKET_FIXED_PADDING
 NP_CD_COMMAND_ORDER ?= 1
 export NP_GPU_PACKET_FASTPATH NP_CD_COMMAND_ORDER
@@ -80,7 +82,7 @@ runtime: | build
 	cp $(NP_BDMA_MODULE_DIR)/usbhdfsd.irx.ata build/bdma_ata_bd.irx
 	$(MAKE) -C iop/filebridge
 	mkdir -p build/runtime
-	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/file_storage.c runtime/file_storage.h runtime/dmacycles.S runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S runtime/uploadcopy.S runtime/returndelay.S runtime/gtecolor.S runtime/rgb24.S runtime/gp0.S runtime/loopcycles.S runtime/codeguard.S runtime/codeguard.c runtime/codeguard.h runtime/audio.S runtime/spucapture.S runtime/spureverb.S runtime/spureverbexact.S runtime/reverbexact.c runtime/mdec.S runtime/mdecrow.S runtime/mdecchroma.S runtime/mdeccolor.S runtime/mdecrle.S runtime/pcmflow.S runtime/rastermath.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/file.c src/file_patch.c src/vcd.c src/sha1.c src/patch.c src/runtime_corrections.c build/runtime/
+	cp runtime/Makefile runtime/resident.ld runtime/main.c runtime/config.h runtime/saveguards.h runtime/file_storage.c runtime/file_storage.h runtime/dmacycles.S runtime/hooks.S runtime/transfer.S runtime/memoryaccess.c runtime/memoryaccess.h runtime/memoryaccess.S runtime/uploadcopy.S runtime/returndelay.S runtime/gtecolor.S runtime/rgb24.S runtime/gp0.S runtime/loopcycles.S runtime/codeguard.S runtime/codeguard.c runtime/codeguard.h runtime/loaderretire.S runtime/audio.S runtime/spucapture.S runtime/spureverb.S runtime/spureverbexact.S runtime/reverbexact.c runtime/mdec.S runtime/mdecrow.S runtime/mdecchroma.S runtime/mdeccolor.S runtime/mdecrle.S runtime/pcmflow.S runtime/rastermath.S src/boot_elf.c src/boot_sha256.c src/compat.c src/compat_profiles.generated.h src/launch.c src/file.c src/file_patch.c src/vcd.c src/sha1.c src/patch.c src/runtime_corrections.c build/runtime/
 	cp runtime/igrobserve.S runtime/igrobserve.h build/runtime/
 	cp runtime/startup_diag.c runtime/startup_diag.h build/runtime/
 	cp runtime/igrwait.S runtime/igrwait.h build/runtime/

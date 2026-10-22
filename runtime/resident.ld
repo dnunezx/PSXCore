@@ -41,6 +41,16 @@ ASSERT(. <= 0x000ec800, "runtime GTE transfer adapter overflow")
  np_cd_order_end = .;
 } :resident
 ASSERT(. <= 0x000f0000, "runtime CD order arena overflow")
+/* The native return loader/private stack ends below 0xef000. This helper
+ * occupies the remaining bounded gap before the established 0xf0000 arena. */
+ASSERT(. <= 0x000ef000, "runtime CD order overlaps loader retirement")
+.loader_retire 0x000ef000: {
+ np_loader_retire_begin = .;
+ KEEP(*(._psxcore_loader_retire.text))
+ KEEP(*(._psxcore_loader_retire.data))
+ np_loader_retire_end = .;
+} :resident
+ASSERT(. <= 0x000f0000, "runtime loader retirement arena overflow")
 .diagnostic 0x000f0000: {
  KEEP(*(._psxcore_hooks))
  KEEP(*(._psxcore_memory))

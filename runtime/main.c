@@ -26,6 +26,12 @@ extern char np_packet_fast_template[],np_packet_fast_end[];
 extern void np_cd_order_command(void),np_cd_order_after_ack(void);
 extern char np_cd_order_begin[],np_cd_order_end[];
 #endif
+#ifndef NP_RAYMAN_LOADER_RETIRE
+#define NP_RAYMAN_LOADER_RETIRE 1
+#endif
+#if NP_RAYMAN_LOADER_RETIRE != 0 && NP_RAYMAN_LOADER_RETIRE != 1
+#error "Rayman loader retirement requires a boolean"
+#endif
 #include "saveguards.h"
 #include "gteintpl_patch.h"
 extern void np_gte_intpl_begin(void),np_gte_intpl_compile(void);
@@ -227,6 +233,36 @@ static int install_code_guard(const NpElf *elf) {
            queue_word(sites[1],expected[1][0],0x2442b000) ||
            np_patch_add(&patch_set,sites[2],expected[2],replacement,8)?-1:0;
 }
+#if NP_RAYMAN_LOADER_RETIRE
+extern void np_loader_retire_compile(void),np_loader_retire(void);
+extern char np_loader_retire_begin[],np_loader_retire_end[];
+static int install_loader_retirement(const NpElf *elf) {
+    const uintptr_t begin=(uintptr_t)np_loader_retire_begin;
+    const uintptr_t end=(uintptr_t)np_loader_retire_end;
+    const uintptr_t compile=(uintptr_t)np_loader_retire_compile;
+    const uintptr_t retire=(uintptr_t)np_loader_retire;
+    if(begin!=0xef000 || end<=begin || end>0xf0000 ||
+       compile<begin || compile>=end || retire<begin || retire>=end ||
+       (compile&3) || (retire&3))return -1;
+    const uint32_t sites[2]={0x20273c,0x202288};
+    const uint32_t expected[2][2]={{0x0c08215a,0x0100282d},
+        {0x2442e000,0x0043102b}};
+    for(unsigned j=0;j<2;++j) {
+        int found=0;
+        for(unsigned i=0;i<elf->count;++i) {
+            const NpSegment *s=&elf->segments[i];
+            if(sites[j]>=s->address && sites[j]+8<=s->address+s->filesz) {
+                const void *words=(const void *)(NP_BOOT_STAGE+s->offset+sites[j]-s->address);
+                if(memcmp(words,expected[j],8))return -1;
+                found=1;break;
+            }
+        }
+        if(!found)return -1;
+    }
+    return queue_word(sites[0],expected[0][0],0x0c000000u|((uint32_t)compile>>2)) ||
+           queue_word(sites[1],expected[1][0],0x2442dff0)?-1:0;
+}
+#endif
 #if NP_PCM_BUFFER_RATE
 extern void np_pcm_buffer_rate(void),np_pcm_buffer_rate_end(void);
 static int install_pcm_buffer_rate(void) {
@@ -1050,6 +1086,16 @@ int main(int argc,char **argv) {
     } else {
         trace("PSXCORE code-validation=native-only option=off\n");
     }
+#if NP_RAYMAN_LOADER_RETIRE
+    /* This bounded USA loader fix is independent of full Code Validation.
+     * Other titles and explicitly enabled exact validation retain their paths. */
+    if(native && !code_validation && !strcmp(request.serial,"SLUS_012.35")) {
+        if(install_loader_retirement(&elf)) {
+            trace("PSXCORE rejected=loader-retirement-patch-plan\n");goto rejected;
+        }
+        trace("PSXCORE loader-retirement=rayman2-us boundary=exec validation=native-only\n");
+    }
+#endif
 #if NP_POPS_BLOCK_LIMIT
     /* Decoder-window selection is independent of Code Validation. */
     if(queue_word(0x502750,0x100,NP_POPS_BLOCK_LIMIT)) {

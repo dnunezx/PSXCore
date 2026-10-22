@@ -18,8 +18,13 @@ EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h
 NP_PACKET_FIXED_PADDING ?= 1
+NP_RAYMAN_LOADER_RETIRE ?= 1
+ifeq ($(NP_RAYMAN_LOADER_RETIRE),1)
+EE_OBJS += loaderretire.o
+endif
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_CFLAGS += -DNP_PACKET_FIXED_PADDING=$(NP_PACKET_FIXED_PADDING)
+EE_CFLAGS += -DNP_RAYMAN_LOADER_RETIRE=$(NP_RAYMAN_LOADER_RETIRE)
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
 NP_MEMORY_SCRATCH_FASTPATH ?= 1
@@ -158,3 +163,6 @@ cdorder_asm.o: cdorder.S
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 cdorder.o: cdorder.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Os -G0 -fno-builtin -fno-jump-tables -fno-tree-loop-distribute-patterns -c $< -o $@
+
+loaderretire.o: loaderretire.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
