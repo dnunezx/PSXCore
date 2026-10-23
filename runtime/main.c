@@ -3,6 +3,7 @@
 #include "psxcore_launch.h"
 #include "psxcore_patch.h"
 #include "psxcore_runtime.h"
+#include "psxcore_hdtv.h"
 #include "psxcore_file_patch.h"
 #include "file_storage.h"
 #include "startup_diag.h"
@@ -160,6 +161,7 @@ extern void np_video_trace_reset(void),np_video_trace_crt(void);
 extern void np_video_interlace_applied(void);
 extern void np_rgb24_buffered(void),np_rgb24_dispatch(void),np_rgb24_update(void);
 static NpPatchSet patch_set;
+extern void np_hdtv_begin(void),np_hdtv_display(void),np_hdtv_crt(void),np_hdtv_height(void),np_hdtv_end(void);
 #if NP_INTERLACE_BUFFERED_PRESENT
 #if !NP_RGB24_SCANOUT_ADAPTER
 #error NP_INTERLACE_BUFFERED_PRESENT requires NP_RGB24_SCANOUT_ADAPTER
@@ -1170,6 +1172,15 @@ int main(int argc,char **argv) {
 #endif
     }
 #endif
+    if(native) {
+        error=np_hdtv_plan(request.runtime,resolved.fixes,
+            (void *)NP_BOOT_STAGE,3166988,&elf,&patch_set,
+            (uintptr_t)np_hdtv_begin,(uintptr_t)np_hdtv_display,
+            (uintptr_t)np_hdtv_crt,(uintptr_t)np_hdtv_height,(uintptr_t)np_hdtv_end);
+        if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
+        trace("PSXCORE hdtv-fix=%s output=region-native rendering=unchanged hardware=unverified\n",
+            (resolved.fixes&NP_FIX_HDTV)?"on":"off");
+    }
     if(hooks && install_hooks(&elf,game,minimal,assets)) {
         trace("PSXCORE rejected=interface-patch-plan\n");goto rejected;
     }

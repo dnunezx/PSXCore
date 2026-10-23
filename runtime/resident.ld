@@ -60,6 +60,8 @@ ASSERT(. <= 0x000f0000, "runtime loader retirement arena overflow")
 ASSERT(. <= 0x000f7000, "runtime diagnostic hooks overflow")
 .return_delay 0x000f7000: {
  KEEP(*(._psxcore_return_delay))
+ /* Dormant output hooks; explicit launch option installs their callers. */
+ KEEP(*(._psxcore_hdtv))
 } :resident
 ASSERT(. <= 0x000f7800, "runtime return-load helpers overflow")
 .gte_color 0x000f7800: {

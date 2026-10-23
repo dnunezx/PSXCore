@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := library
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_INCS = -Iinclude
-CORE_NAMES = vcd request elf boot_elf boot_sha256 compat launch file card file_patch patch runtime_corrections discmap discset sha1 igr
+CORE_NAMES = vcd request elf boot_elf boot_sha256 compat hdtv launch file card file_patch patch runtime_corrections discmap discset sha1 igr
 CORE_OBJS = $(addprefix build/core/,$(addsuffix .o,$(CORE_NAMES)))
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
@@ -84,6 +84,7 @@ runtime: | build
 	mkdir -p build/runtime/gamepatches
 	cp runtime/gamepatches/*.c build/runtime/gamepatches/
 	cp runtime/igrobserve.S runtime/igrobserve.h build/runtime/
+	cp src/hdtv.c runtime/hdtv.S build/runtime/
 	cp runtime/startup_diag.c runtime/startup_diag.h build/runtime/
 	cp runtime/igrwait.S runtime/igrwait.h build/runtime/
 	cp runtime/igrquit.S runtime/igrquit.h build/runtime/

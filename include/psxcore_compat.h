@@ -18,7 +18,10 @@
 /* Optional output-rate feedback; may lower pitch. Disabled unless selected. */
 #define NP_FIX_ADAPTIVE_AUDIO 16u
 #define NP_ADAPTIVE_AUDIO_LABEL "Adaptive Audio"
-#define NP_FIX_ALL (NP_FIX_ADAPTIVE_AUDIO | NP_FIX_CODE_VALIDATION | NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
+/* Experimental output compatibility; explicit CUSTOM selection only. */
+#define NP_FIX_HDTV 32u
+#define NP_HDTV_LABEL "HDTV Fix (480i / 576i)"
+#define NP_FIX_ALL (NP_FIX_HDTV | NP_FIX_ADAPTIVE_AUDIO | NP_FIX_CODE_VALIDATION | NP_FIX_LICENSE | NP_FIX_CATALOG_MASK)
 #define NP_PROFILE_REVISION 5u
 typedef struct {
     uint32_t mode, enable, disable, diagnostics;
