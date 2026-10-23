@@ -1,6 +1,12 @@
 #ifndef NP_GTE_NATIVE_THREE_PATCH_H
 #define NP_GTE_NATIVE_THREE_PATCH_H
 #include "psxcore_patch.h"
+#ifndef NP_MDEC_ZERO_SCALE
+#define NP_MDEC_ZERO_SCALE 0
+#endif
+#if NP_MDEC_ZERO_SCALE && !NP_MDEC_BLOCK_FASTPATH
+#error "NP_MDEC_ZERO_SCALE requires NP_MDEC_BLOCK_FASTPATH"
+#endif
 #ifndef NP_GTE_MATRIX_MODES
 #define NP_GTE_MATRIX_MODES 0
 #endif
@@ -12,6 +18,10 @@ extern void np_gte_compile_rtpt(void);
 extern void np_gte_compile_gpf(void);
 extern void np_gte_compile_gpl(void);
 extern void np_gte_compile_intpl(void);
+#if NP_MDEC_ZERO_SCALE && NP_MDEC_BLOCK_FASTPATH
+extern void np_mdec_zero_quant_init(void),np_mdec_zero_rle(void),np_mdec_zero_frame(void);
+extern const unsigned short np_mdec_zero_factors[64];
+#endif
 #if NP_GTE_MATRIX_MODES
 extern void np_gte_matrix_compile(void);
 #endif
@@ -22,9 +32,12 @@ extern void np_gte_near_template(void),np_gte_near_template_end(void);
 #endif
 static inline const char *np_gte_native_three_plan(NpPatchSet *set) {
  const uintptr_t begin=(uintptr_t)np_gte_native_three_begin,end=(uintptr_t)np_gte_native_three_end;
- if(!set || set->count>NP_PATCH_LIMIT-(11+(NP_GTE_MATRIX_MODES?1:0)))return "gte-native-three-capacity";
+ if(!set || set->count>NP_PATCH_LIMIT-(11+(NP_GTE_MATRIX_MODES?1:0)+((NP_MDEC_ZERO_SCALE && NP_MDEC_BLOCK_FASTPATH)?2:0)))return "gte-native-three-capacity";
  if(begin!=0xece00 || end<=begin || end>0xef000 || ((begin|end)&3))return "gte-native-three-resident";
  const uintptr_t entries[]={(uintptr_t)np_gte_compile_rtps,(uintptr_t)np_gte_compile_rtpt,(uintptr_t)np_gte_compile_gpf,(uintptr_t)np_gte_compile_gpl,(uintptr_t)np_gte_compile_intpl,(uintptr_t)np_gte_avsz_tail,(uintptr_t)np_gte_compile_nclip,(uintptr_t)np_gte_screen_native,(uintptr_t)np_gte_depth_native
+#if NP_MDEC_ZERO_SCALE && NP_MDEC_BLOCK_FASTPATH
+ ,(uintptr_t)np_mdec_zero_quant_init,(uintptr_t)np_mdec_zero_rle,(uintptr_t)np_mdec_zero_frame
+#endif
 #if NP_GTE_MATRIX_MODES
  ,(uintptr_t)np_gte_matrix_compile
 #endif
@@ -57,6 +70,14 @@ static inline const char *np_gte_native_three_plan(NpPatchSet *set) {
 #if NP_GTE_MATRIX_MODES
  static const uint32_t matrix_expected[]={0x15600009u,0x26310004u};
  error=np_patch_add(set,0x206c10,matrix_expected,(const uint32_t[]){0x08000000u|((uint32_t)np_gte_matrix_compile>>2),0},8);if(error)return error;
+#endif
+#if NP_MDEC_ZERO_SCALE && NP_MDEC_BLOCK_FASTPATH
+ const uintptr_t factors=(uintptr_t)np_mdec_zero_factors;
+ if((factors&15) || factors<begin || factors+128>end)return "mdec-zero-factors";
+ static const uint32_t zero_cache_expected[]={0x03e00008u,0};
+ error=np_patch_add(set,0x20d29c,zero_cache_expected,(const uint32_t[]){0x08000000u|((uint32_t)np_mdec_zero_quant_init>>2),0},8);if(error)return error;
+ static const uint32_t zero_frame_expected[]={0x27bdffa0u,0x3c030059u,0xffb10018u};
+ error=np_patch_add(set,0x20dbb8,zero_frame_expected,(const uint32_t[]){0x08000000u|((uint32_t)np_mdec_zero_frame>>2),0x3c030059u,0},12);if(error)return error;
 #endif
  return NULL;
 }

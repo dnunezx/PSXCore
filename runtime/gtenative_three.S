@@ -3476,5 +3476,99 @@ far_publish_209df4:
 far_publish_209df8:
 .word 0xac8100fc
 #endif
+
+#if NP_MDEC_ZERO_SCALE && NP_MDEC_BLOCK_FASTPATH
+
+/* Zero-scale cache uses the existing native AAN precision. Preserve all
+ * nonzero-scale cache entries and both multiply banks. */
+.balign 16
+.globl np_mdec_zero_quant_init
+np_mdec_zero_quant_init:
+/* The native builder already retains its cache base in $10. The cold frame
+ * caller supplies the same base in its call delay slot. */
+la $9,np_mdec_zero_factors
+lq $8,0($9)
+sq $8,0($10)
+sq $8,128($10)
+lq $8,16($9)
+sq $8,16($10)
+sq $8,144($10)
+lq $8,32($9)
+sq $8,32($10)
+sq $8,160($10)
+lq $8,48($9)
+sq $8,48($10)
+sq $8,176($10)
+lq $8,64($9)
+sq $8,64($10)
+sq $8,192($10)
+lq $8,80($9)
+sq $8,80($10)
+sq $8,208($10)
+lq $8,96($9)
+sq $8,96($10)
+sq $8,224($10)
+lq $8,112($9)
+sq $8,112($10)
+jr $ra
+sq $8,240($10)
+/* Zero scale is independent of quant-table uploads, including first decode. */
+.globl np_mdec_zero_frame
+np_mdec_zero_frame:
+/* The hook supplies the original LUI in its delay slot. Reuse that base;
+ * perform the stack allocation in the conditional branch delay slot. */
+lh $8,0x7d60($v1)
+addiu $8,$8,-16
+beqz $8,mdec_zero_frame_ready
+addiu $sp,$sp,-96
+move $24,$ra
+jal np_mdec_zero_quant_init
+addiu $10,$v1,0x7d60
+move $ra,$24
+mdec_zero_frame_ready:
+/* Replay the guarded third prologue instruction in the return delay slot. */
+j 0x20dbc4
+sd $s1,24($sp)
+/* The general parser already cleared the block and stored its DC/scale.
+ * A zero scale uses linear positions instead of the zigzag table. */
+.globl np_mdec_zero_rle
+np_mdec_zero_rle:
+sra $9,$9,22
+sh $9,0($a1)
+li $a3,-63
+mdec_zero_token:
+lhu $a0,0($v0)
+addiu $v0,$v0,2
+beq $a0,$8,mdec_zero_padding
+srl $9,$a0,10
+addu $a3,$a3,$9
+bgez $a3,mdec_zero_padding
+sll $12,$a3,1
+sll $10,$a0,22
+sra $10,$10,22
+addu $12,$a1,$12
+addiu $a3,$a3,1
+bnez $a3,mdec_zero_token
+/* Fold the negative index's block-end bias into the store displacement. */
+sh $10,128($12)
+mdec_zero_padding:
+lhu $9,0($v0)
+beq $9,$8,mdec_zero_padding
+addiu $v0,$v0,2
+mdec_zero_return:
+jr $ra
+addiu $v0,$v0,-2
+.balign 16
+.globl np_mdec_zero_factors
+np_mdec_zero_factors:
+.hword 16,22,20,18,16,12,8,4
+.hword 22,30,28,26,22,17,12,6
+.hword 20,28,27,24,20,16,11,5
+.hword 18,26,24,22,18,14,10,5
+.hword 16,22,20,18,16,12,8,4
+.hword 12,17,16,14,12,9,6,3
+.hword 8,12,11,10,8,6,4,2
+.hword 4,6,5,5,4,3,2,1
+#endif
 .globl np_gte_native_three_end
 np_gte_native_three_end:

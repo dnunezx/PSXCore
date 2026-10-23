@@ -21,6 +21,10 @@ np_mdec_rle_general:
     move $v0,$a0
     srl $9,$v1,10
     sw $9,0($a2)
+#if NP_MDEC_ZERO_SCALE
+    /* Reuse the decoded scale and native sign-extension delay slot. */
+    beqz $9,np_mdec_zero_rle
+#endif
     sll $9,$v1,22
     sra $9,$9,22
     sh $9,0($a1)
@@ -60,6 +64,10 @@ np_mdec_rle_general:
     j 0x20d2b0
     sd $s2,16($sp)
     /* Preserve following resident helper addresses after shortening the loop. */
+#if NP_MDEC_ZERO_SCALE
+    .space 4
+#else
     .space 8
+#endif
     .balign 16
 np_mdec_rle_general_end:
