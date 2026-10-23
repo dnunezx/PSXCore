@@ -10,8 +10,8 @@
 np_gte_native_three_begin:
 .globl np_gte_compile_rtps
 np_gte_compile_rtps:
-    andi $v0,$s0,0x400
-    lui $a0,%hi(np_gte_rtps_lm1)
+    j np_gte_select_rtps
+    nop
     bnez $v0,1f
     addiu $a0,$a0,%lo(np_gte_rtps_lm1)
     li $a0,0x2088c8
@@ -19,8 +19,8 @@ np_gte_compile_rtps:
     nop
 .globl np_gte_compile_rtpt
 np_gte_compile_rtpt:
-    andi $v0,$s0,0x400
-    lui $a0,%hi(np_gte_rtpt_lm1)
+    j np_gte_select_rtpt
+    nop
     bnez $v0,1f
     addiu $a0,$a0,%lo(np_gte_rtpt_lm1)
     li $a0,0x208b68
@@ -46,8 +46,8 @@ np_gte_compile_gpl:
     nop
 .globl np_gte_compile_intpl
 np_gte_compile_intpl:
-    andi $v0,$s0,0x400
-    bnez $v0,1f
+    j np_gte_select_intpl
+    nop
     srl $v1,$s0,19
     andi $v1,$v1,1
     beqz $v1,1f
@@ -901,25 +901,25 @@ proj_208a5c:
 proj_208a60:
 .word 0xa4ab0044 /* retained 0x208a60 */
 proj_208a64:
-.word 0x948c00e8 /* retained 0x208a64 */
+lhu $12,232($a0)
 proj_208a68:
-.word 0x000c6c00 /* retained 0x208a68 */
+sll $v0,$11,1
 proj_208a6c:
-.word 0x000c6043 /* retained 0x208a6c */
+sltu $v0,$12,$v0
 proj_208a70:
-.word 0x016c102a /* retained 0x208a70 */
+bnez $v0,proj_208a80
 proj_208a74:
-.word 0x54400000 | (((proj_208a8c - . - 4) / 4) & 0xffff)
+sll $13,$12,16
 proj_208a78:
-.word 0x3c0b0002 /* retained 0x208a78 */
+j np_gte_projection_zero+8
 proj_208a7c:
-j np_gte_projection_zero
-proj_208a80:
 nop
+proj_208a80:
+.word 0x01ab001b /* DIVU only when H < 2*SZ3; SZ3 is nonzero. */
 proj_208a84:
-.word 0x000001cd /* retained 0x208a84 */
+mflo $11
 proj_208a88:
-.word 0x00005812 /* retained 0x208a88 */
+nop
 proj_208a8c:
 .word 0x010b0018 /* retained 0x208a8c */
 proj_208a90:
@@ -1055,5 +1055,1602 @@ np_gte_projection_zero:
     mflo $11
     j proj_208a8c
     nop
+
+.globl np_gte_select_rtps
+np_gte_select_rtps:
+    srl $v0,$s0,19
+    andi $v0,$v0,1
+    bnez $v0,select_rtps_sf1
+    andi $v1,$s0,0x400
+    la $a0,np_gte_rtps_sf0_lm0
+    la $v0,np_gte_rtps_sf0_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+select_rtps_sf1:
+    la $a0,np_gte_hot_rtps
+    la $v0,np_gte_rtps_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+.globl np_gte_select_rtpt
+np_gte_select_rtpt:
+    srl $v0,$s0,19
+    andi $v0,$v0,1
+    bnez $v0,select_rtpt_sf1
+    andi $v1,$s0,0x400
+    la $a0,np_gte_rtpt_sf0_lm0
+    la $v0,np_gte_rtpt_sf0_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+select_rtpt_sf1:
+    la $a0,np_gte_hot_rtpt
+    la $v0,np_gte_rtpt_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+.globl np_gte_select_intpl
+np_gte_select_intpl:
+    srl $v0,$s0,19
+    andi $v0,$v0,1
+    bnez $v0,select_intpl_sf1
+    andi $v1,$s0,0x400
+    la $a0,np_gte_intpl_sf0_lm0
+    la $v0,np_gte_intpl_sf0_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+select_intpl_sf1:
+    la $a0,np_gte_intpl_lm0
+    la $v0,np_gte_intpl_lm1
+    movn $a0,$v0,$v1
+    j 0x206c5c
+    nop
+.globl np_gte_intpl_sf0_lm0
+np_gte_intpl_sf0_lm0:
+int_sf0_0_209770:
+.word 0x240b1000 /* retained 0x209770 */
+int_sf0_0_209774:
+.word 0x240c1000 /* retained 0x209774 */
+int_sf0_0_209778:
+.word 0x240d1000 /* retained 0x209778 */
+int_sf0_0_20977c:
+.word 0x8c880024 /* retained 0x20977c */
+int_sf0_0_209780:
+.word 0x8c890028 /* retained 0x209780 */
+int_sf0_0_209784:
+.word 0x8c8a002c /* retained 0x209784 */
+int_sf0_0_209788:
+.word 0x010b4018 /* retained 0x209788 */
+int_sf0_0_20978c:
+.word 0x012c4818 /* retained 0x20978c */
+int_sf0_0_209790:
+.word 0x714d5018 /* retained 0x209790 */
+int_sf0_0_209794:
+pxor $at,$at,$at
+int_sf0_0_209798:
+.word 0x8c820054 /* retained 0x209798 */
+int_sf0_0_20979c:
+.word 0x8c830058 /* retained 0x20979c */
+int_sf0_0_2097a0:
+.word 0xac820050 /* retained 0x2097a0 */
+int_sf0_0_2097a4:
+.word 0xac830054 /* retained 0x2097a4 */
+int_sf0_0_2097a8:
+.word 0x8c8b00d4 /* retained 0x2097a8 */
+int_sf0_0_2097ac:
+.word 0x8c8c00d8 /* retained 0x2097ac */
+int_sf0_0_2097b0:
+.word 0x8c8d00dc /* retained 0x2097b0 */
+int_sf0_0_2097b4:
+.word 0x000b5b38 /* retained 0x2097b4 */
+int_sf0_0_2097b8:
+.word 0x000c6338 /* retained 0x2097b8 */
+int_sf0_0_2097bc:
+.word 0x000d6b38 /* retained 0x2097bc */
+int_sf0_0_2097c0:
+.word 0x0168582f /* retained 0x2097c0 */
+int_sf0_0_2097c4:
+.word 0x0189602f /* retained 0x2097c4 */
+int_sf0_0_2097c8:
+.word 0x01aa682f /* retained 0x2097c8 */
+int_sf0_0_2097cc:
+sll $11,$11,0
+int_sf0_0_2097d0:
+sll $12,$12,0
+int_sf0_0_2097d4:
+sll $13,$13,0
+int_sf0_0_2097d8:
+.word 0x24028000 /* retained 0x2097d8 */
+int_sf0_0_2097dc:
+.word 0x24037fff /* retained 0x2097dc */
+int_sf0_0_2097e0:
+.word 0x0162702a /* retained 0x2097e0 */
+int_sf0_0_2097e4:
+.word 0x006b782a /* retained 0x2097e4 */
+int_sf0_0_2097e8:
+.word 0x004e580b /* retained 0x2097e8 */
+int_sf0_0_2097ec:
+.word 0x006f580b /* retained 0x2097ec */
+int_sf0_0_2097f0:
+.word 0x01cf7025 /* retained 0x2097f0 */
+int_sf0_0_2097f4:
+.word 0x000e7600 /* retained 0x2097f4 */
+int_sf0_0_2097f8:
+.word 0x002e0825 /* retained 0x2097f8 */
+int_sf0_0_2097fc:
+.word 0x0182702a /* retained 0x2097fc */
+int_sf0_0_209800:
+.word 0x006c782a /* retained 0x209800 */
+int_sf0_0_209804:
+.word 0x004e600b /* retained 0x209804 */
+int_sf0_0_209808:
+.word 0x006f600b /* retained 0x209808 */
+int_sf0_0_20980c:
+.word 0x01cf7025 /* retained 0x20980c */
+int_sf0_0_209810:
+.word 0x000e75c0 /* retained 0x209810 */
+int_sf0_0_209814:
+.word 0x002e0825 /* retained 0x209814 */
+int_sf0_0_209818:
+.word 0x01a2702a /* retained 0x209818 */
+int_sf0_0_20981c:
+.word 0x006d782a /* retained 0x20981c */
+int_sf0_0_209820:
+.word 0x004e680b /* retained 0x209820 */
+int_sf0_0_209824:
+.word 0x006f680b /* retained 0x209824 */
+int_sf0_0_209828:
+.word 0x01cf7025 /* retained 0x209828 */
+int_sf0_0_20982c:
+.word 0x000e7580 /* retained 0x20982c */
+int_sf0_0_209830:
+.word 0x002e0825 /* retained 0x209830 */
+int_sf0_0_209834:
+.word 0x8c8e0020 /* retained 0x209834 */
+int_sf0_0_209838:
+.word 0x016e5818 /* retained 0x209838 */
+int_sf0_0_20983c:
+.word 0x018e6018 /* retained 0x20983c */
+int_sf0_0_209840:
+.word 0x71ae6818 /* retained 0x209840 */
+int_sf0_0_209844:
+.word 0x010b402d /* retained 0x209844 */
+int_sf0_0_209848:
+.word 0x012c482d /* retained 0x209848 */
+int_sf0_0_20984c:
+.word 0x014d502d /* retained 0x20984c */
+int_sf0_0_209850:
+sll $8,$8,0
+int_sf0_0_209854:
+sll $9,$9,0
+int_sf0_0_209858:
+sll $10,$10,0
+pextlw $8,$9,$8
+pcpyld $8,$10,$8
+lui $v0,0x7000
+lq $14,784($v0)
+lq $15,800($v0)
+lq $24,768($v0)
+pub_sf0_0_208bf4:
+.word 0x0008103f /* retained 0x208bf4 */
+pub_sf0_0_208bf8:
+.word 0xac880064 /* retained 0x208bf8 */
+pub_sf0_0_208bfc:
+.word 0x71081ba9 /* retained 0x208bfc */
+pub_sf0_0_208c00:
+.word 0xac820068 /* retained 0x208c00 */
+pub_sf0_0_208c04:
+.word 0xac83006c /* retained 0x208c04 */
+pub_sf0_0_208c08:
+.word 0x71c81088 /* retained 0x208c08 */
+pub_sf0_0_208c0c:
+.word 0x71c818c8 /* retained 0x208c0c */
+pub_sf0_0_208c10:
+.word 0x70585c89 /* retained 0x208c10 */
+pub_sf0_0_208c14:
+.word 0x706f1088 /* retained 0x208c14 */
+pub_sf0_0_208c18:
+.word 0x702b0ca9 /* retained 0x208c18 */
+pub_sf0_0_208c1c:
+.word 0x70585c89 /* retained 0x208c1c */
+pub_sf0_0_208c20:
+.word 0x706f48e8 /* retained 0x208c20 */
+pub_sf0_0_208c24:
+.word 0x702b0ca9 /* retained 0x208c24 */
+pub_sf0_0_208c28:
+.word 0x0009103f /* retained 0x208c28 */
+pub_sf0_0_208c2c:
+.word 0xac890024 /* retained 0x208c2c */
+pub_sf0_0_208c30:
+.word 0x71291ba9 /* retained 0x208c30 */
+pub_sf0_0_208c34:
+.word 0xac820028 /* retained 0x208c34 */
+pub_sf0_0_208c38:
+.word 0xac83002c /* retained 0x208c38 */
+pub_sf0_0_208c3c:
+.word 0x7008413f /* retained 0x208c3c */
+pub_sf0_0_208c40:
+.word 0x3c027000 /* retained 0x208c40 */
+pub_sf0_0_208c44:
+.word 0x78430330 /* retained 0x208c44 */
+pub_sf0_0_208c48:
+.word 0x78420340 /* retained 0x208c48 */
+pub_sf0_0_208c4c:
+.word 0x70085888 /* retained 0x208c4c */
+pub_sf0_0_208c50:
+.word 0x700860c8 /* retained 0x208c50 */
+pub_sf0_0_208c54:
+.word 0x71636c89 /* retained 0x208c54 */
+pub_sf0_0_208c58:
+.word 0x71825888 /* retained 0x208c58 */
+pub_sf0_0_208c5c:
+.word 0x702d0ca9 /* retained 0x208c5c */
+pub_sf0_0_208c60:
+.word 0x71636c89 /* retained 0x208c60 */
+pub_sf0_0_208c64:
+.word 0x718248e8 /* retained 0x208c64 */
+pub_sf0_0_208c68:
+.word 0x702d0ca9 /* retained 0x208c68 */
+pub_sf0_0_208c6c:
+.word 0x808b001b /* retained 0x208c6c */
+pub_sf0_0_208c70:
+.word 0x0009103f /* retained 0x208c70 */
+pub_sf0_0_208c74:
+.word 0xa0890058 /* retained 0x208c74 */
+pub_sf0_0_208c78:
+.word 0x71291ba9 /* retained 0x208c78 */
+pub_sf0_0_208c7c:
+.word 0xa0820059 /* retained 0x208c7c */
+pub_sf0_0_208c80:
+.word 0xa083005a /* retained 0x208c80 */
+pub_sf0_0_208c84:
+.word 0xa08b005b /* retained 0x208c84 */
+pub_sf0_0_208c88:
+.word 0x0001103e /* retained 0x208c88 */
+pub_sf0_0_208c8c:
+.word 0x70211ca8 /* retained 0x208c8c */
+pub_sf0_0_208c90:
+.word 0x00220825 /* retained 0x208c90 */
+pub_sf0_0_208c94:
+.word 0x00230825 /* retained 0x208c94 */
+pub_sf0_0_208c98:
+.word 0x3c027f87 /* retained 0x208c98 */
+pub_sf0_0_208c9c:
+.word 0x3442e000 /* retained 0x208c9c */
+pub_sf0_0_208ca0:
+.word 0x3c038000 /* retained 0x208ca0 */
+pub_sf0_0_208ca4:
+.word 0x00411024 /* retained 0x208ca4 */
+pub_sf0_0_208ca8:
+.word 0x0002180a /* retained 0x208ca8 */
+pub_sf0_0_208cac:
+.word 0x00230825 /* retained 0x208cac */
+pub_sf0_0_208cb0:
+.word 0x03e00008 /* retained 0x208cb0 */
+pub_sf0_0_208cb4:
+.word 0xac8100fc /* retained 0x208cb4 */
+.globl np_gte_intpl_sf0_lm1
+np_gte_intpl_sf0_lm1:
+int_sf0_1_209770:
+.word 0x240b1000 /* retained 0x209770 */
+int_sf0_1_209774:
+.word 0x240c1000 /* retained 0x209774 */
+int_sf0_1_209778:
+.word 0x240d1000 /* retained 0x209778 */
+int_sf0_1_20977c:
+.word 0x8c880024 /* retained 0x20977c */
+int_sf0_1_209780:
+.word 0x8c890028 /* retained 0x209780 */
+int_sf0_1_209784:
+.word 0x8c8a002c /* retained 0x209784 */
+int_sf0_1_209788:
+.word 0x010b4018 /* retained 0x209788 */
+int_sf0_1_20978c:
+.word 0x012c4818 /* retained 0x20978c */
+int_sf0_1_209790:
+.word 0x714d5018 /* retained 0x209790 */
+int_sf0_1_209794:
+pxor $at,$at,$at
+int_sf0_1_209798:
+.word 0x8c820054 /* retained 0x209798 */
+int_sf0_1_20979c:
+.word 0x8c830058 /* retained 0x20979c */
+int_sf0_1_2097a0:
+.word 0xac820050 /* retained 0x2097a0 */
+int_sf0_1_2097a4:
+.word 0xac830054 /* retained 0x2097a4 */
+int_sf0_1_2097a8:
+.word 0x8c8b00d4 /* retained 0x2097a8 */
+int_sf0_1_2097ac:
+.word 0x8c8c00d8 /* retained 0x2097ac */
+int_sf0_1_2097b0:
+.word 0x8c8d00dc /* retained 0x2097b0 */
+int_sf0_1_2097b4:
+.word 0x000b5b38 /* retained 0x2097b4 */
+int_sf0_1_2097b8:
+.word 0x000c6338 /* retained 0x2097b8 */
+int_sf0_1_2097bc:
+.word 0x000d6b38 /* retained 0x2097bc */
+int_sf0_1_2097c0:
+.word 0x0168582f /* retained 0x2097c0 */
+int_sf0_1_2097c4:
+.word 0x0189602f /* retained 0x2097c4 */
+int_sf0_1_2097c8:
+.word 0x01aa682f /* retained 0x2097c8 */
+int_sf0_1_2097cc:
+sll $11,$11,0
+int_sf0_1_2097d0:
+sll $12,$12,0
+int_sf0_1_2097d4:
+sll $13,$13,0
+int_sf0_1_2097d8:
+.word 0x24028000 /* retained 0x2097d8 */
+int_sf0_1_2097dc:
+.word 0x24037fff /* retained 0x2097dc */
+int_sf0_1_2097e0:
+.word 0x0162702a /* retained 0x2097e0 */
+int_sf0_1_2097e4:
+.word 0x006b782a /* retained 0x2097e4 */
+int_sf0_1_2097e8:
+.word 0x004e580b /* retained 0x2097e8 */
+int_sf0_1_2097ec:
+.word 0x006f580b /* retained 0x2097ec */
+int_sf0_1_2097f0:
+.word 0x01cf7025 /* retained 0x2097f0 */
+int_sf0_1_2097f4:
+.word 0x000e7600 /* retained 0x2097f4 */
+int_sf0_1_2097f8:
+.word 0x002e0825 /* retained 0x2097f8 */
+int_sf0_1_2097fc:
+.word 0x0182702a /* retained 0x2097fc */
+int_sf0_1_209800:
+.word 0x006c782a /* retained 0x209800 */
+int_sf0_1_209804:
+.word 0x004e600b /* retained 0x209804 */
+int_sf0_1_209808:
+.word 0x006f600b /* retained 0x209808 */
+int_sf0_1_20980c:
+.word 0x01cf7025 /* retained 0x20980c */
+int_sf0_1_209810:
+.word 0x000e75c0 /* retained 0x209810 */
+int_sf0_1_209814:
+.word 0x002e0825 /* retained 0x209814 */
+int_sf0_1_209818:
+.word 0x01a2702a /* retained 0x209818 */
+int_sf0_1_20981c:
+.word 0x006d782a /* retained 0x20981c */
+int_sf0_1_209820:
+.word 0x004e680b /* retained 0x209820 */
+int_sf0_1_209824:
+.word 0x006f680b /* retained 0x209824 */
+int_sf0_1_209828:
+.word 0x01cf7025 /* retained 0x209828 */
+int_sf0_1_20982c:
+.word 0x000e7580 /* retained 0x20982c */
+int_sf0_1_209830:
+.word 0x002e0825 /* retained 0x209830 */
+int_sf0_1_209834:
+.word 0x8c8e0020 /* retained 0x209834 */
+int_sf0_1_209838:
+.word 0x016e5818 /* retained 0x209838 */
+int_sf0_1_20983c:
+.word 0x018e6018 /* retained 0x20983c */
+int_sf0_1_209840:
+.word 0x71ae6818 /* retained 0x209840 */
+int_sf0_1_209844:
+.word 0x010b402d /* retained 0x209844 */
+int_sf0_1_209848:
+.word 0x012c482d /* retained 0x209848 */
+int_sf0_1_20984c:
+.word 0x014d502d /* retained 0x20984c */
+int_sf0_1_209850:
+sll $8,$8,0
+int_sf0_1_209854:
+sll $9,$9,0
+int_sf0_1_209858:
+sll $10,$10,0
+pextlw $8,$9,$8
+pcpyld $8,$10,$8
+lui $v0,0x7000
+pxor $14,$14,$14
+lq $15,800($v0)
+lq $24,768($v0)
+pub_sf0_1_208bf4:
+.word 0x0008103f /* retained 0x208bf4 */
+pub_sf0_1_208bf8:
+.word 0xac880064 /* retained 0x208bf8 */
+pub_sf0_1_208bfc:
+.word 0x71081ba9 /* retained 0x208bfc */
+pub_sf0_1_208c00:
+.word 0xac820068 /* retained 0x208c00 */
+pub_sf0_1_208c04:
+.word 0xac83006c /* retained 0x208c04 */
+pub_sf0_1_208c08:
+.word 0x71c81088 /* retained 0x208c08 */
+pub_sf0_1_208c0c:
+.word 0x71c818c8 /* retained 0x208c0c */
+pub_sf0_1_208c10:
+.word 0x70585c89 /* retained 0x208c10 */
+pub_sf0_1_208c14:
+.word 0x706f1088 /* retained 0x208c14 */
+pub_sf0_1_208c18:
+.word 0x702b0ca9 /* retained 0x208c18 */
+pub_sf0_1_208c1c:
+.word 0x70585c89 /* retained 0x208c1c */
+pub_sf0_1_208c20:
+.word 0x706f48e8 /* retained 0x208c20 */
+pub_sf0_1_208c24:
+.word 0x702b0ca9 /* retained 0x208c24 */
+pub_sf0_1_208c28:
+.word 0x0009103f /* retained 0x208c28 */
+pub_sf0_1_208c2c:
+.word 0xac890024 /* retained 0x208c2c */
+pub_sf0_1_208c30:
+.word 0x71291ba9 /* retained 0x208c30 */
+pub_sf0_1_208c34:
+.word 0xac820028 /* retained 0x208c34 */
+pub_sf0_1_208c38:
+.word 0xac83002c /* retained 0x208c38 */
+pub_sf0_1_208c3c:
+.word 0x7008413f /* retained 0x208c3c */
+pub_sf0_1_208c40:
+.word 0x3c027000 /* retained 0x208c40 */
+pub_sf0_1_208c44:
+.word 0x78430330 /* retained 0x208c44 */
+pub_sf0_1_208c48:
+.word 0x78420340 /* retained 0x208c48 */
+pub_sf0_1_208c4c:
+.word 0x70085888 /* retained 0x208c4c */
+pub_sf0_1_208c50:
+.word 0x700860c8 /* retained 0x208c50 */
+pub_sf0_1_208c54:
+.word 0x71636c89 /* retained 0x208c54 */
+pub_sf0_1_208c58:
+.word 0x71825888 /* retained 0x208c58 */
+pub_sf0_1_208c5c:
+.word 0x702d0ca9 /* retained 0x208c5c */
+pub_sf0_1_208c60:
+.word 0x71636c89 /* retained 0x208c60 */
+pub_sf0_1_208c64:
+.word 0x718248e8 /* retained 0x208c64 */
+pub_sf0_1_208c68:
+.word 0x702d0ca9 /* retained 0x208c68 */
+pub_sf0_1_208c6c:
+.word 0x808b001b /* retained 0x208c6c */
+pub_sf0_1_208c70:
+.word 0x0009103f /* retained 0x208c70 */
+pub_sf0_1_208c74:
+.word 0xa0890058 /* retained 0x208c74 */
+pub_sf0_1_208c78:
+.word 0x71291ba9 /* retained 0x208c78 */
+pub_sf0_1_208c7c:
+.word 0xa0820059 /* retained 0x208c7c */
+pub_sf0_1_208c80:
+.word 0xa083005a /* retained 0x208c80 */
+pub_sf0_1_208c84:
+.word 0xa08b005b /* retained 0x208c84 */
+pub_sf0_1_208c88:
+.word 0x0001103e /* retained 0x208c88 */
+pub_sf0_1_208c8c:
+.word 0x70211ca8 /* retained 0x208c8c */
+pub_sf0_1_208c90:
+.word 0x00220825 /* retained 0x208c90 */
+pub_sf0_1_208c94:
+.word 0x00230825 /* retained 0x208c94 */
+pub_sf0_1_208c98:
+.word 0x3c027f87 /* retained 0x208c98 */
+pub_sf0_1_208c9c:
+.word 0x3442e000 /* retained 0x208c9c */
+pub_sf0_1_208ca0:
+.word 0x3c038000 /* retained 0x208ca0 */
+pub_sf0_1_208ca4:
+.word 0x00411024 /* retained 0x208ca4 */
+pub_sf0_1_208ca8:
+.word 0x0002180a /* retained 0x208ca8 */
+pub_sf0_1_208cac:
+.word 0x00230825 /* retained 0x208cac */
+pub_sf0_1_208cb0:
+.word 0x03e00008 /* retained 0x208cb0 */
+pub_sf0_1_208cb4:
+.word 0xac8100fc /* retained 0x208cb4 */
+.globl np_gte_rtps_sf0_lm0
+np_gte_rtps_sf0_lm0:
+proj_sf0_0_2088c8:
+.word 0x8c820034 /* retained 0x2088c8 */
+proj_sf0_0_2088cc:
+.word 0x8c830038 /* retained 0x2088cc */
+proj_sf0_0_2088d0:
+.word 0x94880044 /* retained 0x2088d0 */
+proj_sf0_0_2088d4:
+.word 0x94890048 /* retained 0x2088d4 */
+proj_sf0_0_2088d8:
+.word 0x948a004c /* retained 0x2088d8 */
+proj_sf0_0_2088dc:
+.word 0xac820030 /* retained 0x2088dc */
+proj_sf0_0_2088e0:
+.word 0xac830034 /* retained 0x2088e0 */
+proj_sf0_0_2088e4:
+.word 0xa4880040 /* retained 0x2088e4 */
+proj_sf0_0_2088e8:
+.word 0xa4890044 /* retained 0x2088e8 */
+proj_sf0_0_2088ec:
+.word 0xa48a0048 /* retained 0x2088ec */
+proj_sf0_0_2088f0:
+.word 0x24190001 /* retained 0x2088f0 */
+proj_sf0_0_2088f4:
+.word 0x24850008 /* retained 0x2088f4 */
+proj_sf0_0_2088f8:
+.word 0x0000082d /* retained 0x2088f8 */
+proj_sf0_0_2088fc:
+.word 0x0080302d /* retained 0x2088fc */
+proj_sf0_0_208900:
+.word 0x84ce0000 /* retained 0x208900 */
+proj_sf0_0_208904:
+.word 0x84cf0002 /* retained 0x208904 */
+proj_sf0_0_208908:
+.word 0x84d80004 /* retained 0x208908 */
+proj_sf0_0_20890c:
+.word 0x848b0080 /* retained 0x20890c */
+proj_sf0_0_208910:
+.word 0x848c0082 /* retained 0x208910 */
+proj_sf0_0_208914:
+.word 0x016e5818 /* retained 0x208914 */
+proj_sf0_0_208918:
+.word 0x718f6018 /* retained 0x208918 */
+proj_sf0_0_20891c:
+.word 0x8c880094 /* retained 0x20891c */
+proj_sf0_0_208920:
+.word 0x848d0084 /* retained 0x208920 */
+proj_sf0_0_208924:
+.word 0x00084338 /* retained 0x208924 */
+proj_sf0_0_208928:
+.word 0x01b86818 /* retained 0x208928 */
+proj_sf0_0_20892c:
+.word 0x010b402d /* retained 0x20892c */
+proj_sf0_0_208930:
+.word 0x010c402d /* retained 0x208930 */
+proj_sf0_0_208934:
+.word 0x010d402d /* retained 0x208934 */
+proj_sf0_0_208938:
+.word 0x848b0086 /* retained 0x208938 */
+proj_sf0_0_20893c:
+.word 0x848c0088 /* retained 0x20893c */
+proj_sf0_0_208940:
+.word 0x016e5818 /* retained 0x208940 */
+proj_sf0_0_208944:
+.word 0x718f6018 /* retained 0x208944 */
+proj_sf0_0_208948:
+.word 0x8c890098 /* retained 0x208948 */
+proj_sf0_0_20894c:
+.word 0x848d008a /* retained 0x20894c */
+proj_sf0_0_208950:
+.word 0x00094b38 /* retained 0x208950 */
+proj_sf0_0_208954:
+.word 0x01b86818 /* retained 0x208954 */
+proj_sf0_0_208958:
+.word 0x012b482d /* retained 0x208958 */
+proj_sf0_0_20895c:
+.word 0x012c482d /* retained 0x20895c */
+proj_sf0_0_208960:
+.word 0x012d482d /* retained 0x208960 */
+proj_sf0_0_208964:
+.word 0x848b008c /* retained 0x208964 */
+proj_sf0_0_208968:
+.word 0x848c008e /* retained 0x208968 */
+proj_sf0_0_20896c:
+.word 0x016e5818 /* retained 0x20896c */
+proj_sf0_0_208970:
+.word 0x718f1818 /* retained 0x208970 */
+proj_sf0_0_208974:
+.word 0x8c8a009c /* retained 0x208974 */
+proj_sf0_0_208978:
+.word 0x848d0090 /* retained 0x208978 */
+proj_sf0_0_20897c:
+.word 0x000a5338 /* retained 0x20897c */
+proj_sf0_0_208980:
+.word 0x01b86818 /* retained 0x208980 */
+proj_sf0_0_208984:
+.word 0x014b502d /* retained 0x208984 */
+proj_sf0_0_208988:
+.word 0x0143502d /* retained 0x208988 */
+proj_sf0_0_20898c:
+.word 0x014d502d /* retained 0x20898c */
+proj_sf0_0_208990:
+sll $8,$8,0
+proj_sf0_0_208994:
+sll $9,$9,0
+proj_sf0_0_208998:
+dsll $11,$10,20
+proj_sf0_0_20899c:
+dsra32 $11,$11,0
+proj_sf0_0_2089a0:
+sll $10,$10,0
+proj_sf0_0_2089a4:
+nop
+proj_sf0_0_2089a8:
+.word 0xac880064 /* retained 0x2089a8 */
+proj_sf0_0_2089ac:
+.word 0xac890068 /* retained 0x2089ac */
+proj_sf0_0_2089b0:
+.word 0xac8a006c /* retained 0x2089b0 */
+proj_sf0_0_2089b4:
+nop
+proj_sf0_0_2089b8:
+.word 0x24028000 /* retained 0x2089b8 */
+proj_sf0_0_2089bc:
+.word 0x24037fff /* retained 0x2089bc */
+proj_sf0_0_2089c0:
+.word 0x3c0e8100 /* retained 0x2089c0 */
+proj_sf0_0_2089c4:
+.word 0x0102782a /* retained 0x2089c4 */
+proj_sf0_0_2089c8:
+.word 0x004f400b /* retained 0x2089c8 */
+proj_sf0_0_2089cc:
+.word 0x01cf780b /* retained 0x2089cc */
+proj_sf0_0_2089d0:
+.word 0x002f0825 /* retained 0x2089d0 */
+proj_sf0_0_2089d4:
+.word 0x0068782a /* retained 0x2089d4 */
+proj_sf0_0_2089d8:
+.word 0x006f400b /* retained 0x2089d8 */
+proj_sf0_0_2089dc:
+.word 0x01cf780b /* retained 0x2089dc */
+proj_sf0_0_2089e0:
+.word 0x002f0825 /* retained 0x2089e0 */
+proj_sf0_0_2089e4:
+.word 0x3c0e8080 /* retained 0x2089e4 */
+proj_sf0_0_2089e8:
+.word 0x0122782a /* retained 0x2089e8 */
+proj_sf0_0_2089ec:
+.word 0x004f480b /* retained 0x2089ec */
+proj_sf0_0_2089f0:
+.word 0x01cf780b /* retained 0x2089f0 */
+proj_sf0_0_2089f4:
+.word 0x002f0825 /* retained 0x2089f4 */
+proj_sf0_0_2089f8:
+.word 0x0069782a /* retained 0x2089f8 */
+proj_sf0_0_2089fc:
+.word 0x006f480b /* retained 0x2089fc */
+proj_sf0_0_208a00:
+.word 0x01cf780b /* retained 0x208a00 */
+proj_sf0_0_208a04:
+.word 0x002f0825 /* retained 0x208a04 */
+proj_sf0_0_208a08:
+li $v0,-32768
+proj_sf0_0_208a0c:
+slt $15,$11,$v0
+proj_sf0_0_208a10:
+slt $14,$v1,$11
+proj_sf0_0_208a14:
+or $15,$15,$14
+proj_sf0_0_208a18:
+sll $15,$15,22
+proj_sf0_0_208a1c:
+or $at,$at,$15
+proj_sf0_0_208a20:
+pmaxw $10,$10,$v0
+proj_sf0_0_208a24:
+pminw $10,$10,$v1
+proj_sf0_0_208a28:
+nop
+proj_sf0_0_208a2c:
+.word 0xac880024 /* retained 0x208a2c */
+proj_sf0_0_208a30:
+.word 0xac890028 /* retained 0x208a30 */
+proj_sf0_0_208a34:
+.word 0xac8a002c /* retained 0x208a34 */
+proj_sf0_0_208a38:
+.word 0x3402ffff /* retained 0x208a38 */
+proj_sf0_0_208a3c:
+.word 0x3c038006 /* retained 0x208a3c */
+proj_sf0_0_208a40:
+.word 0x0160702a /* retained 0x208a40 */
+proj_sf0_0_208a44:
+.word 0x000e580b /* retained 0x208a44 */
+proj_sf0_0_208a48:
+.word 0x006e700b /* retained 0x208a48 */
+proj_sf0_0_208a4c:
+.word 0x002e0825 /* retained 0x208a4c */
+proj_sf0_0_208a50:
+.word 0x004b702a /* retained 0x208a50 */
+proj_sf0_0_208a54:
+.word 0x004e580b /* retained 0x208a54 */
+proj_sf0_0_208a58:
+.word 0x006e700b /* retained 0x208a58 */
+proj_sf0_0_208a5c:
+.word 0x002e0825 /* retained 0x208a5c */
+proj_sf0_0_208a60:
+.word 0xa4ab0044 /* retained 0x208a60 */
+proj_sf0_0_208a64:
+lhu $12,232($a0)
+proj_sf0_0_208a68:
+sll $v0,$11,1
+proj_sf0_0_208a6c:
+sltu $v0,$12,$v0
+proj_sf0_0_208a70:
+bnez $v0,proj_sf0_0_208a80
+proj_sf0_0_208a74:
+sll $13,$12,16
+proj_sf0_0_208a78:
+j np_gte_sf0_zero_0+8
+proj_sf0_0_208a7c:
+nop
+proj_sf0_0_208a80:
+.word 0x01ab001b /* DIVU only when H < 2*SZ3; SZ3 is nonzero. */
+proj_sf0_0_208a84:
+mflo $11
+proj_sf0_0_208a88:
+nop
+proj_sf0_0_208a8c:
+.word 0x010b0018 /* retained 0x208a8c */
+proj_sf0_0_208a90:
+.word 0x712b0018 /* retained 0x208a90 */
+proj_sf0_0_208a94:
+.word 0x8c8c00e0 /* retained 0x208a94 */
+proj_sf0_0_208a98:
+.word 0x8c8d00e4 /* retained 0x208a98 */
+proj_sf0_0_208a9c:
+.word 0x70001030 /* retained 0x208a9c */
+proj_sf0_0_208aa0:
+.word 0x70421ba9 /* retained 0x208aa0 */
+proj_sf0_0_208aa4:
+.word 0x0182602d /* retained 0x208aa4 */
+proj_sf0_0_208aa8:
+.word 0x01a3682d /* retained 0x208aa8 */
+proj_sf0_0_208aac:
+.word 0x000c643b /* retained 0x208aac */
+proj_sf0_0_208ab0:
+.word 0x000d6c3b /* retained 0x208ab0 */
+proj_sf0_0_208ab4:
+.word 0x3c0e8000 /* retained 0x208ab4 */
+proj_sf0_0_208ab8:
+.word 0x2402fc00 /* retained 0x208ab8 */
+proj_sf0_0_208abc:
+.word 0x240303ff /* retained 0x208abc */
+proj_sf0_0_208ac0:
+.word 0x35ce4000 /* retained 0x208ac0 */
+proj_sf0_0_208ac4:
+.word 0x0182782a /* retained 0x208ac4 */
+proj_sf0_0_208ac8:
+.word 0x004f600b /* retained 0x208ac8 */
+proj_sf0_0_208acc:
+.word 0x01cf780b /* retained 0x208acc */
+proj_sf0_0_208ad0:
+.word 0x002f0825 /* retained 0x208ad0 */
+proj_sf0_0_208ad4:
+.word 0x006c782a /* retained 0x208ad4 */
+proj_sf0_0_208ad8:
+.word 0x006f600b /* retained 0x208ad8 */
+proj_sf0_0_208adc:
+.word 0x01cf780b /* retained 0x208adc */
+proj_sf0_0_208ae0:
+.word 0x002f0825 /* retained 0x208ae0 */
+proj_sf0_0_208ae4:
+.word 0x25cee000 /* retained 0x208ae4 */
+proj_sf0_0_208ae8:
+.word 0x01a2782a /* retained 0x208ae8 */
+proj_sf0_0_208aec:
+.word 0x004f680b /* retained 0x208aec */
+proj_sf0_0_208af0:
+.word 0x01cf780b /* retained 0x208af0 */
+proj_sf0_0_208af4:
+.word 0x002f0825 /* retained 0x208af4 */
+proj_sf0_0_208af8:
+.word 0x006d782a /* retained 0x208af8 */
+proj_sf0_0_208afc:
+.word 0x006f680b /* retained 0x208afc */
+proj_sf0_0_208b00:
+.word 0x01cf780b /* retained 0x208b00 */
+proj_sf0_0_208b04:
+.word 0x002f0825 /* retained 0x208b04 */
+proj_sf0_0_208b08:
+.word 0xa4ac0030 /* retained 0x208b08 */
+proj_sf0_0_208b0c:
+.word 0xa4ad0032 /* retained 0x208b0c */
+proj_sf0_0_208b10:
+.word 0x2739ffff /* retained 0x208b10 */
+proj_sf0_0_208b14:
+.word 0x24a50004 /* retained 0x208b14 */
+proj_sf0_0_208b18:
+.word 0x17200000 | (((proj_sf0_0_208900 - . - 4) / 4) & 0xffff)
+proj_sf0_0_208b1c:
+.word 0x24c60008 /* retained 0x208b1c */
+proj_sf0_0_208b20:
+.word 0x848200ec /* retained 0x208b20 */
+proj_sf0_0_208b24:
+.word 0x004b5818 /* retained 0x208b24 */
+proj_sf0_0_208b28:
+.word 0x8c8300f0 /* retained 0x208b28 */
+proj_sf0_0_208b2c:
+.word 0x0163582d /* retained 0x208b2c */
+proj_sf0_0_208b30:
+.word 0xac8b0060 /* retained 0x208b30 */
+proj_sf0_0_208b34:
+.word 0x000b5b3b /* retained 0x208b34 */
+proj_sf0_0_208b38:
+.word 0x24031000 /* retained 0x208b38 */
+proj_sf0_0_208b3c:
+.word 0x0160702a /* retained 0x208b3c */
+proj_sf0_0_208b40:
+.word 0x006b782a /* retained 0x208b40 */
+proj_sf0_0_208b44:
+.word 0x000e580b /* retained 0x208b44 */
+proj_sf0_0_208b48:
+.word 0x006f580b /* retained 0x208b48 */
+proj_sf0_0_208b4c:
+.word 0x01cf7025 /* retained 0x208b4c */
+proj_sf0_0_208b50:
+.word 0x000e7300 /* retained 0x208b50 */
+proj_sf0_0_208b54:
+.word 0x002e0825 /* retained 0x208b54 */
+proj_sf0_0_208b58:
+.word 0xac8b0020 /* retained 0x208b58 */
+proj_sf0_0_208b5c:
+.word 0x03e00008 /* retained 0x208b5c */
+proj_sf0_0_208b60:
+.word 0xac8100fc /* retained 0x208b60 */
+proj_sf0_0_208b64:
+.word 0x00000000 /* retained 0x208b64 */
+proj_sf0_0_208b68:
+.globl np_gte_rtpt_sf0_lm0
+np_gte_rtpt_sf0_lm0:
+li $25,3
+proj_sf0_0_208b6c:
+.word 0x9482004c /* retained 0x208b6c */
+proj_sf0_0_208b70:
+.word 0x0080282d /* retained 0x208b70 */
+proj_sf0_0_208b74:
+.word 0x10000000 | (((proj_sf0_0_2088f8 - . - 4) / 4) & 0xffff)
+proj_sf0_0_208b78:
+.word 0xa4820040 /* retained 0x208b78 */
+np_gte_sf0_zero_0:
+    bnez $11,zero_nonzero_0
+    nop
+    lui $11,1
+    ori $11,$11,0xffff
+    lui $v0,0x8002
+    or $at,$at,$v0
+    j proj_sf0_0_208a8c
+    nop
+zero_nonzero_0:
+    .word 0x01ab001b
+    mflo $11
+    j proj_sf0_0_208a8c
+    nop
+.globl np_gte_rtps_sf0_lm1
+np_gte_rtps_sf0_lm1:
+proj_sf0_1_2088c8:
+.word 0x8c820034 /* retained 0x2088c8 */
+proj_sf0_1_2088cc:
+.word 0x8c830038 /* retained 0x2088cc */
+proj_sf0_1_2088d0:
+.word 0x94880044 /* retained 0x2088d0 */
+proj_sf0_1_2088d4:
+.word 0x94890048 /* retained 0x2088d4 */
+proj_sf0_1_2088d8:
+.word 0x948a004c /* retained 0x2088d8 */
+proj_sf0_1_2088dc:
+.word 0xac820030 /* retained 0x2088dc */
+proj_sf0_1_2088e0:
+.word 0xac830034 /* retained 0x2088e0 */
+proj_sf0_1_2088e4:
+.word 0xa4880040 /* retained 0x2088e4 */
+proj_sf0_1_2088e8:
+.word 0xa4890044 /* retained 0x2088e8 */
+proj_sf0_1_2088ec:
+.word 0xa48a0048 /* retained 0x2088ec */
+proj_sf0_1_2088f0:
+.word 0x24190001 /* retained 0x2088f0 */
+proj_sf0_1_2088f4:
+.word 0x24850008 /* retained 0x2088f4 */
+proj_sf0_1_2088f8:
+.word 0x0000082d /* retained 0x2088f8 */
+proj_sf0_1_2088fc:
+.word 0x0080302d /* retained 0x2088fc */
+proj_sf0_1_208900:
+.word 0x84ce0000 /* retained 0x208900 */
+proj_sf0_1_208904:
+.word 0x84cf0002 /* retained 0x208904 */
+proj_sf0_1_208908:
+.word 0x84d80004 /* retained 0x208908 */
+proj_sf0_1_20890c:
+.word 0x848b0080 /* retained 0x20890c */
+proj_sf0_1_208910:
+.word 0x848c0082 /* retained 0x208910 */
+proj_sf0_1_208914:
+.word 0x016e5818 /* retained 0x208914 */
+proj_sf0_1_208918:
+.word 0x718f6018 /* retained 0x208918 */
+proj_sf0_1_20891c:
+.word 0x8c880094 /* retained 0x20891c */
+proj_sf0_1_208920:
+.word 0x848d0084 /* retained 0x208920 */
+proj_sf0_1_208924:
+.word 0x00084338 /* retained 0x208924 */
+proj_sf0_1_208928:
+.word 0x01b86818 /* retained 0x208928 */
+proj_sf0_1_20892c:
+.word 0x010b402d /* retained 0x20892c */
+proj_sf0_1_208930:
+.word 0x010c402d /* retained 0x208930 */
+proj_sf0_1_208934:
+.word 0x010d402d /* retained 0x208934 */
+proj_sf0_1_208938:
+.word 0x848b0086 /* retained 0x208938 */
+proj_sf0_1_20893c:
+.word 0x848c0088 /* retained 0x20893c */
+proj_sf0_1_208940:
+.word 0x016e5818 /* retained 0x208940 */
+proj_sf0_1_208944:
+.word 0x718f6018 /* retained 0x208944 */
+proj_sf0_1_208948:
+.word 0x8c890098 /* retained 0x208948 */
+proj_sf0_1_20894c:
+.word 0x848d008a /* retained 0x20894c */
+proj_sf0_1_208950:
+.word 0x00094b38 /* retained 0x208950 */
+proj_sf0_1_208954:
+.word 0x01b86818 /* retained 0x208954 */
+proj_sf0_1_208958:
+.word 0x012b482d /* retained 0x208958 */
+proj_sf0_1_20895c:
+.word 0x012c482d /* retained 0x20895c */
+proj_sf0_1_208960:
+.word 0x012d482d /* retained 0x208960 */
+proj_sf0_1_208964:
+.word 0x848b008c /* retained 0x208964 */
+proj_sf0_1_208968:
+.word 0x848c008e /* retained 0x208968 */
+proj_sf0_1_20896c:
+.word 0x016e5818 /* retained 0x20896c */
+proj_sf0_1_208970:
+.word 0x718f1818 /* retained 0x208970 */
+proj_sf0_1_208974:
+.word 0x8c8a009c /* retained 0x208974 */
+proj_sf0_1_208978:
+.word 0x848d0090 /* retained 0x208978 */
+proj_sf0_1_20897c:
+.word 0x000a5338 /* retained 0x20897c */
+proj_sf0_1_208980:
+.word 0x01b86818 /* retained 0x208980 */
+proj_sf0_1_208984:
+.word 0x014b502d /* retained 0x208984 */
+proj_sf0_1_208988:
+.word 0x0143502d /* retained 0x208988 */
+proj_sf0_1_20898c:
+.word 0x014d502d /* retained 0x20898c */
+proj_sf0_1_208990:
+sll $8,$8,0
+proj_sf0_1_208994:
+sll $9,$9,0
+proj_sf0_1_208998:
+dsll $11,$10,20
+proj_sf0_1_20899c:
+dsra32 $11,$11,0
+proj_sf0_1_2089a0:
+sll $10,$10,0
+proj_sf0_1_2089a4:
+nop
+proj_sf0_1_2089a8:
+.word 0xac880064 /* retained 0x2089a8 */
+proj_sf0_1_2089ac:
+.word 0xac890068 /* retained 0x2089ac */
+proj_sf0_1_2089b0:
+.word 0xac8a006c /* retained 0x2089b0 */
+proj_sf0_1_2089b4:
+nop
+proj_sf0_1_2089b8:
+move $v0,$zero
+proj_sf0_1_2089bc:
+.word 0x24037fff /* retained 0x2089bc */
+proj_sf0_1_2089c0:
+.word 0x3c0e8100 /* retained 0x2089c0 */
+proj_sf0_1_2089c4:
+.word 0x0102782a /* retained 0x2089c4 */
+proj_sf0_1_2089c8:
+.word 0x004f400b /* retained 0x2089c8 */
+proj_sf0_1_2089cc:
+.word 0x01cf780b /* retained 0x2089cc */
+proj_sf0_1_2089d0:
+.word 0x002f0825 /* retained 0x2089d0 */
+proj_sf0_1_2089d4:
+.word 0x0068782a /* retained 0x2089d4 */
+proj_sf0_1_2089d8:
+.word 0x006f400b /* retained 0x2089d8 */
+proj_sf0_1_2089dc:
+.word 0x01cf780b /* retained 0x2089dc */
+proj_sf0_1_2089e0:
+.word 0x002f0825 /* retained 0x2089e0 */
+proj_sf0_1_2089e4:
+.word 0x3c0e8080 /* retained 0x2089e4 */
+proj_sf0_1_2089e8:
+.word 0x0122782a /* retained 0x2089e8 */
+proj_sf0_1_2089ec:
+.word 0x004f480b /* retained 0x2089ec */
+proj_sf0_1_2089f0:
+.word 0x01cf780b /* retained 0x2089f0 */
+proj_sf0_1_2089f4:
+.word 0x002f0825 /* retained 0x2089f4 */
+proj_sf0_1_2089f8:
+.word 0x0069782a /* retained 0x2089f8 */
+proj_sf0_1_2089fc:
+.word 0x006f480b /* retained 0x2089fc */
+proj_sf0_1_208a00:
+.word 0x01cf780b /* retained 0x208a00 */
+proj_sf0_1_208a04:
+.word 0x002f0825 /* retained 0x208a04 */
+proj_sf0_1_208a08:
+li $v0,-32768
+proj_sf0_1_208a0c:
+slt $15,$11,$v0
+proj_sf0_1_208a10:
+slt $14,$v1,$11
+proj_sf0_1_208a14:
+or $15,$15,$14
+proj_sf0_1_208a18:
+sll $15,$15,22
+proj_sf0_1_208a1c:
+or $at,$at,$15
+proj_sf0_1_208a20:
+pmaxw $10,$10,$zero
+proj_sf0_1_208a24:
+pminw $10,$10,$v1
+proj_sf0_1_208a28:
+nop
+proj_sf0_1_208a2c:
+.word 0xac880024 /* retained 0x208a2c */
+proj_sf0_1_208a30:
+.word 0xac890028 /* retained 0x208a30 */
+proj_sf0_1_208a34:
+.word 0xac8a002c /* retained 0x208a34 */
+proj_sf0_1_208a38:
+.word 0x3402ffff /* retained 0x208a38 */
+proj_sf0_1_208a3c:
+.word 0x3c038006 /* retained 0x208a3c */
+proj_sf0_1_208a40:
+.word 0x0160702a /* retained 0x208a40 */
+proj_sf0_1_208a44:
+.word 0x000e580b /* retained 0x208a44 */
+proj_sf0_1_208a48:
+.word 0x006e700b /* retained 0x208a48 */
+proj_sf0_1_208a4c:
+.word 0x002e0825 /* retained 0x208a4c */
+proj_sf0_1_208a50:
+.word 0x004b702a /* retained 0x208a50 */
+proj_sf0_1_208a54:
+.word 0x004e580b /* retained 0x208a54 */
+proj_sf0_1_208a58:
+.word 0x006e700b /* retained 0x208a58 */
+proj_sf0_1_208a5c:
+.word 0x002e0825 /* retained 0x208a5c */
+proj_sf0_1_208a60:
+.word 0xa4ab0044 /* retained 0x208a60 */
+proj_sf0_1_208a64:
+lhu $12,232($a0)
+proj_sf0_1_208a68:
+sll $v0,$11,1
+proj_sf0_1_208a6c:
+sltu $v0,$12,$v0
+proj_sf0_1_208a70:
+bnez $v0,proj_sf0_1_208a80
+proj_sf0_1_208a74:
+sll $13,$12,16
+proj_sf0_1_208a78:
+j np_gte_sf0_zero_1+8
+proj_sf0_1_208a7c:
+nop
+proj_sf0_1_208a80:
+.word 0x01ab001b /* DIVU only when H < 2*SZ3; SZ3 is nonzero. */
+proj_sf0_1_208a84:
+mflo $11
+proj_sf0_1_208a88:
+nop
+proj_sf0_1_208a8c:
+.word 0x010b0018 /* retained 0x208a8c */
+proj_sf0_1_208a90:
+.word 0x712b0018 /* retained 0x208a90 */
+proj_sf0_1_208a94:
+.word 0x8c8c00e0 /* retained 0x208a94 */
+proj_sf0_1_208a98:
+.word 0x8c8d00e4 /* retained 0x208a98 */
+proj_sf0_1_208a9c:
+.word 0x70001030 /* retained 0x208a9c */
+proj_sf0_1_208aa0:
+.word 0x70421ba9 /* retained 0x208aa0 */
+proj_sf0_1_208aa4:
+.word 0x0182602d /* retained 0x208aa4 */
+proj_sf0_1_208aa8:
+.word 0x01a3682d /* retained 0x208aa8 */
+proj_sf0_1_208aac:
+.word 0x000c643b /* retained 0x208aac */
+proj_sf0_1_208ab0:
+.word 0x000d6c3b /* retained 0x208ab0 */
+proj_sf0_1_208ab4:
+.word 0x3c0e8000 /* retained 0x208ab4 */
+proj_sf0_1_208ab8:
+.word 0x2402fc00 /* retained 0x208ab8 */
+proj_sf0_1_208abc:
+.word 0x240303ff /* retained 0x208abc */
+proj_sf0_1_208ac0:
+.word 0x35ce4000 /* retained 0x208ac0 */
+proj_sf0_1_208ac4:
+.word 0x0182782a /* retained 0x208ac4 */
+proj_sf0_1_208ac8:
+.word 0x004f600b /* retained 0x208ac8 */
+proj_sf0_1_208acc:
+.word 0x01cf780b /* retained 0x208acc */
+proj_sf0_1_208ad0:
+.word 0x002f0825 /* retained 0x208ad0 */
+proj_sf0_1_208ad4:
+.word 0x006c782a /* retained 0x208ad4 */
+proj_sf0_1_208ad8:
+.word 0x006f600b /* retained 0x208ad8 */
+proj_sf0_1_208adc:
+.word 0x01cf780b /* retained 0x208adc */
+proj_sf0_1_208ae0:
+.word 0x002f0825 /* retained 0x208ae0 */
+proj_sf0_1_208ae4:
+.word 0x25cee000 /* retained 0x208ae4 */
+proj_sf0_1_208ae8:
+.word 0x01a2782a /* retained 0x208ae8 */
+proj_sf0_1_208aec:
+.word 0x004f680b /* retained 0x208aec */
+proj_sf0_1_208af0:
+.word 0x01cf780b /* retained 0x208af0 */
+proj_sf0_1_208af4:
+.word 0x002f0825 /* retained 0x208af4 */
+proj_sf0_1_208af8:
+.word 0x006d782a /* retained 0x208af8 */
+proj_sf0_1_208afc:
+.word 0x006f680b /* retained 0x208afc */
+proj_sf0_1_208b00:
+.word 0x01cf780b /* retained 0x208b00 */
+proj_sf0_1_208b04:
+.word 0x002f0825 /* retained 0x208b04 */
+proj_sf0_1_208b08:
+.word 0xa4ac0030 /* retained 0x208b08 */
+proj_sf0_1_208b0c:
+.word 0xa4ad0032 /* retained 0x208b0c */
+proj_sf0_1_208b10:
+.word 0x2739ffff /* retained 0x208b10 */
+proj_sf0_1_208b14:
+.word 0x24a50004 /* retained 0x208b14 */
+proj_sf0_1_208b18:
+.word 0x17200000 | (((proj_sf0_1_208900 - . - 4) / 4) & 0xffff)
+proj_sf0_1_208b1c:
+.word 0x24c60008 /* retained 0x208b1c */
+proj_sf0_1_208b20:
+.word 0x848200ec /* retained 0x208b20 */
+proj_sf0_1_208b24:
+.word 0x004b5818 /* retained 0x208b24 */
+proj_sf0_1_208b28:
+.word 0x8c8300f0 /* retained 0x208b28 */
+proj_sf0_1_208b2c:
+.word 0x0163582d /* retained 0x208b2c */
+proj_sf0_1_208b30:
+.word 0xac8b0060 /* retained 0x208b30 */
+proj_sf0_1_208b34:
+.word 0x000b5b3b /* retained 0x208b34 */
+proj_sf0_1_208b38:
+.word 0x24031000 /* retained 0x208b38 */
+proj_sf0_1_208b3c:
+.word 0x0160702a /* retained 0x208b3c */
+proj_sf0_1_208b40:
+.word 0x006b782a /* retained 0x208b40 */
+proj_sf0_1_208b44:
+.word 0x000e580b /* retained 0x208b44 */
+proj_sf0_1_208b48:
+.word 0x006f580b /* retained 0x208b48 */
+proj_sf0_1_208b4c:
+.word 0x01cf7025 /* retained 0x208b4c */
+proj_sf0_1_208b50:
+.word 0x000e7300 /* retained 0x208b50 */
+proj_sf0_1_208b54:
+.word 0x002e0825 /* retained 0x208b54 */
+proj_sf0_1_208b58:
+.word 0xac8b0020 /* retained 0x208b58 */
+proj_sf0_1_208b5c:
+.word 0x03e00008 /* retained 0x208b5c */
+proj_sf0_1_208b60:
+.word 0xac8100fc /* retained 0x208b60 */
+proj_sf0_1_208b64:
+.word 0x00000000 /* retained 0x208b64 */
+proj_sf0_1_208b68:
+.globl np_gte_rtpt_sf0_lm1
+np_gte_rtpt_sf0_lm1:
+li $25,3
+proj_sf0_1_208b6c:
+.word 0x9482004c /* retained 0x208b6c */
+proj_sf0_1_208b70:
+.word 0x0080282d /* retained 0x208b70 */
+proj_sf0_1_208b74:
+.word 0x10000000 | (((proj_sf0_1_2088f8 - . - 4) / 4) & 0xffff)
+proj_sf0_1_208b78:
+.word 0xa4820040 /* retained 0x208b78 */
+np_gte_sf0_zero_1:
+    bnez $11,zero_nonzero_1
+    nop
+    lui $11,1
+    ori $11,$11,0xffff
+    lui $v0,0x8002
+    or $at,$at,$v0
+    j proj_sf0_1_208a8c
+    nop
+zero_nonzero_1:
+    .word 0x01ab001b
+    mflo $11
+    j proj_sf0_1_208a8c
+    nop
+.globl np_gte_near_template,np_gte_near_template_end
+np_gte_near_template:
+    lhu $12,232($a0)
+    sll $v0,$11,1
+    sltu $v0,$12,$v0
+    .word 0x14400003 /* BNEZ v0,+3; template is copied verbatim. */
+    sll $13,$12,16
+    j np_gte_zero_depth+8
+    nop
+    .word 0x01ab001b
+    mflo $11
+    nop
+np_gte_near_template_end:
+
+.balign 64
+.globl np_gte_hot_rtps
+np_gte_hot_rtps:
+hot_2088c8:
+.word 0x8c820034
+hot_2088cc:
+.word 0x8c830038
+hot_2088d0:
+.word 0x94880044
+hot_2088d4:
+.word 0x94890048
+hot_2088d8:
+.word 0x948a004c
+hot_2088dc:
+.word 0xac820030
+hot_2088e0:
+.word 0xac830034
+hot_2088e4:
+.word 0xa4880040
+hot_2088e8:
+.word 0xa4890044
+hot_2088ec:
+.word 0xa48a0048
+hot_2088f0:
+.word 0x24190001
+hot_2088f4:
+.word 0x24850008
+hot_2088f8:
+.word 0x0000082d
+hot_2088fc:
+.word 0x0080302d
+hot_208900:
+.word 0x84ce0000
+hot_208904:
+.word 0x84cf0002
+hot_208908:
+.word 0x84d80004
+hot_20890c:
+.word 0x848b0080
+hot_208910:
+.word 0x848c0082
+hot_208914:
+.word 0x016e5818
+hot_208918:
+.word 0x718f6018
+hot_20891c:
+.word 0x8c880094
+hot_208920:
+.word 0x848d0084
+hot_208924:
+.word 0x00084338
+hot_208928:
+.word 0x01b86818
+hot_20892c:
+.word 0x010b402d
+hot_208930:
+.word 0x010c402d
+hot_208934:
+.word 0x010d402d
+hot_208938:
+.word 0x848b0086
+hot_20893c:
+.word 0x848c0088
+hot_208940:
+.word 0x016e5818
+hot_208944:
+.word 0x718f6018
+hot_208948:
+.word 0x8c890098
+hot_20894c:
+.word 0x848d008a
+hot_208950:
+.word 0x00094b38
+hot_208954:
+.word 0x01b86818
+hot_208958:
+.word 0x012b482d
+hot_20895c:
+.word 0x012c482d
+hot_208960:
+.word 0x012d482d
+hot_208964:
+.word 0x848b008c
+hot_208968:
+.word 0x848c008e
+hot_20896c:
+.word 0x016e5818
+hot_208970:
+.word 0x718f1818
+hot_208974:
+.word 0x8c8a009c
+hot_208978:
+.word 0x848d0090
+hot_20897c:
+.word 0x000a5338
+hot_208980:
+.word 0x01b86818
+hot_208984:
+.word 0x014b502d
+hot_208988:
+.word 0x0143502d
+hot_20898c:
+.word 0x014d502d
+hot_208990:
+.word 0x00084538
+hot_208994:
+.word 0x00094d38
+hot_208998:
+.word 0x000a5538
+hot_20899c:
+.word 0x0008403f
+hot_2089a0:
+.word 0x0009483f
+hot_2089a4:
+.word 0x000a503f
+hot_2089a8:
+.word 0xac880064
+hot_2089ac:
+.word 0xac890068
+hot_2089b0:
+.word 0xac8a006c
+hot_2089b4:
+.word 0x0140582d
+hot_2089b8:
+.word 0x24028000
+hot_2089bc:
+.word 0x24037fff
+hot_2089c0:
+.word 0x3c0e8100
+hot_2089c4:
+.word 0x0102782a
+hot_2089c8:
+.word 0x004f400b
+hot_2089cc:
+.word 0x01cf780b
+hot_2089d0:
+.word 0x002f0825
+hot_2089d4:
+.word 0x0068782a
+hot_2089d8:
+.word 0x006f400b
+hot_2089dc:
+.word 0x01cf780b
+hot_2089e0:
+.word 0x002f0825
+hot_2089e4:
+.word 0x3c0e8080
+hot_2089e8:
+.word 0x0122782a
+hot_2089ec:
+.word 0x004f480b
+hot_2089f0:
+.word 0x01cf780b
+hot_2089f4:
+.word 0x002f0825
+hot_2089f8:
+.word 0x0069782a
+hot_2089fc:
+.word 0x006f480b
+hot_208a00:
+.word 0x01cf780b
+hot_208a04:
+.word 0x002f0825
+hot_208a08:
+.word 0x3c0e0040
+hot_208a0c:
+.word 0x0142782a
+hot_208a10:
+.word 0x004f500b
+hot_208a14:
+.word 0x01cf780b
+hot_208a18:
+.word 0x002f0825
+hot_208a1c:
+.word 0x006a782a
+hot_208a20:
+.word 0x006f500b
+hot_208a24:
+.word 0x01cf780b
+hot_208a28:
+.word 0x002f0825
+hot_208a2c:
+.word 0xac880024
+hot_208a30:
+.word 0xac890028
+hot_208a34:
+.word 0xac8a002c
+hot_208a38:
+.word 0x3402ffff
+hot_208a3c:
+.word 0x3c038006
+hot_208a40:
+.word 0x0160702a
+hot_208a44:
+.word 0x000e580b
+hot_208a48:
+.word 0x006e700b
+hot_208a4c:
+.word 0x002e0825
+hot_208a50:
+.word 0x004b702a
+hot_208a54:
+.word 0x004e580b
+hot_208a58:
+.word 0x006e700b
+hot_208a5c:
+.word 0x002e0825
+hot_208a60:
+.word 0xa4ab0044
+hot_208a64:
+lhu $12,232($a0)
+hot_208a68:
+sll $v0,$11,1
+hot_208a6c:
+sltu $v0,$12,$v0
+hot_208a70:
+beqz $v0,np_gte_hot_overflow
+hot_208a74:
+sll $13,$12,16
+hot_208a78:
+hot_208a7c:
+hot_208a80:
+.word 0x01ab001b
+hot_208a84:
+mflo $11
+hot_208a88:
+hot_208a8c:
+.word 0x010b0018
+hot_208a90:
+.word 0x712b0018
+hot_208a94:
+.word 0x8c8c00e0
+hot_208a98:
+.word 0x8c8d00e4
+hot_208a9c:
+.word 0x70001030
+hot_208aa0:
+.word 0x70421ba9
+hot_208aa4:
+.word 0x0182602d
+hot_208aa8:
+.word 0x01a3682d
+hot_208aac:
+.word 0x000c643b
+hot_208ab0:
+.word 0x000d6c3b
+hot_208ab4:
+.word 0x3c0e8000
+hot_208ab8:
+.word 0x2402fc00
+hot_208abc:
+.word 0x240303ff
+hot_208ac0:
+.word 0x35ce4000
+hot_208ac4:
+.word 0x0182782a
+hot_208ac8:
+.word 0x004f600b
+hot_208acc:
+.word 0x01cf780b
+hot_208ad0:
+.word 0x002f0825
+hot_208ad4:
+.word 0x006c782a
+hot_208ad8:
+.word 0x006f600b
+hot_208adc:
+.word 0x01cf780b
+hot_208ae0:
+.word 0x002f0825
+hot_208ae4:
+.word 0x25cee000
+hot_208ae8:
+.word 0x01a2782a
+hot_208aec:
+.word 0x004f680b
+hot_208af0:
+.word 0x01cf780b
+hot_208af4:
+.word 0x002f0825
+hot_208af8:
+.word 0x006d782a
+hot_208afc:
+.word 0x006f680b
+hot_208b00:
+.word 0x01cf780b
+hot_208b04:
+.word 0x002f0825
+hot_208b08:
+.word 0xa4ac0030
+hot_208b0c:
+.word 0xa4ad0032
+hot_208b10:
+.word 0x2739ffff
+hot_208b14:
+.word 0x24a50004
+hot_208b18:
+.word 0x17200000 | (((hot_208900 - . - 4) / 4) & 0xffff)
+hot_208b1c:
+.word 0x24c60008
+hot_208b20:
+.word 0x848200ec
+hot_208b24:
+.word 0x004b5818
+hot_208b28:
+.word 0x8c8300f0
+hot_208b2c:
+.word 0x0163582d
+hot_208b30:
+.word 0xac8b0060
+hot_208b34:
+.word 0x000b5b3b
+hot_208b38:
+.word 0x24031000
+hot_208b3c:
+.word 0x0160702a
+hot_208b40:
+.word 0x006b782a
+hot_208b44:
+.word 0x000e580b
+hot_208b48:
+.word 0x006f580b
+hot_208b4c:
+.word 0x01cf7025
+hot_208b50:
+.word 0x000e7300
+hot_208b54:
+.word 0x002e0825
+hot_208b58:
+.word 0xac8b0020
+hot_208b5c:
+.word 0x03e00008
+hot_208b60:
+.word 0xac8100fc
+hot_208b64:
+.word 0x00000000
+.globl np_gte_hot_rtpt
+np_gte_hot_rtpt:
+hot_208b68:
+.word 0x24190003
+hot_208b6c:
+.word 0x9482004c
+hot_208b70:
+.word 0x0080282d
+hot_208b74:
+.word 0x10000000 | (((hot_2088f8 - . - 4) / 4) & 0xffff)
+hot_208b78:
+.word 0xa4820040
+np_gte_hot_overflow:
+lui $11,1
+ori $11,$11,0xffff
+lui $v0,0x8002
+or $at,$at,$v0
+j hot_208a8c
+nop
 .globl np_gte_native_three_end
 np_gte_native_three_end:

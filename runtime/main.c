@@ -327,15 +327,16 @@ extern void np_gte_orgb(void),np_gte_orgb_end(void);
 extern void np_gte_irgb(void),np_gte_irgb_end(void);
 extern void np_gte_zero_depth(void),np_gte_zero_depth_end(void);
 static int install_gte_zero_depth_adapter(void) {
-    const uint32_t expected[7]={0x016c102a,0x54400005,0x3c0b0002,
-        0x15600002,0x01ab001b,0x000001cd,0x00005812};
-    const uintptr_t hook=(uintptr_t)np_gte_zero_depth;
-    const uintptr_t end=(uintptr_t)np_gte_zero_depth_end;
-    if(hook<(uintptr_t)np_gte_irgb_end || end<=hook || end>0xf7900 || (hook&3))return -1;
-    uint32_t replacement[7];memcpy(replacement,expected,sizeof(expected));
-    replacement[3]=0x08000000u|((uint32_t)hook>>2);
-    replacement[4]=replacement[5]=replacement[6]=0;
-    return np_patch_add(&patch_set,0x208a70,expected,replacement,sizeof(expected))?-1:0;
+    /* H < 2*SZ3 proves a nonzero divisor; overflow reuses the existing
+     * zero-depth saturation tail. Firmware is changed only by the plan. */
+    static const uint32_t expected[10]={0x948c00e8,0x000c6c00,0x000c6043,0x016c102a,0x54400005,0x3c0b0002,0x15600002,0x01ab001b,0x000001cd,0x00005812};
+    const uintptr_t hook=(uintptr_t)np_gte_zero_depth,end=(uintptr_t)np_gte_zero_depth_end;
+    const uintptr_t payload=(uintptr_t)np_gte_near_template,last=(uintptr_t)np_gte_near_template_end;
+    if(hook<(uintptr_t)np_gte_irgb_end || end<=hook+8 || end>0xf7900 || (hook&3))return -1;
+    if(payload<(uintptr_t)np_gte_native_three_begin || last>(uintptr_t)np_gte_native_three_end ||
+       last-payload!=40 || (payload&3) || patch_set.count>NP_PATCH_LIMIT-2)return -1;
+    if(np_patch_add(&patch_set,0x208a64,expected,(const void *)payload,32))return -1;
+    return np_patch_add(&patch_set,0x208a84,expected+8,(const void *)(payload+32),8)?-1:0;
 }
 static int install_gte_color_adapter(void) {
     /* The pinned ORGB helper shifts to five bits, then PPAC5 discards three

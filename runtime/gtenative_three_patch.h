@@ -9,6 +9,7 @@ extern void np_gte_compile_rtpt(void);
 extern void np_gte_compile_gpf(void);
 extern void np_gte_compile_gpl(void);
 extern void np_gte_compile_intpl(void);
+extern void np_gte_near_template(void),np_gte_near_template_end(void);
 #endif
 static inline const char *np_gte_native_three_plan(NpPatchSet *set) {
  const uintptr_t begin=(uintptr_t)np_gte_native_three_begin,end=(uintptr_t)np_gte_native_three_end;
