@@ -29,9 +29,7 @@ extern char np_cd_order_begin[],np_cd_order_end[];
 #endif
 #include "gamepatches.h"
 #include "saveguards.h"
-#include "gteintpl_patch.h"
-extern void np_gte_intpl_begin(void),np_gte_intpl_compile(void);
-extern void np_gte_intpl_signed(void),np_gte_intpl_clamp(void),np_gte_intpl_end(void);
+#include "gtenative_three_patch.h"
 #if NP_CD_SWAP
 #include "cdswap_patch.h"
 #endif
@@ -1038,9 +1036,7 @@ int main(int argc,char **argv) {
     if(install_gte_zero_depth_adapter()) {
         trace("PSXCORE rejected=gte-zero-depth-patch-plan\n");goto rejected;
     }
-    error=np_gte_intpl_plan(&patch_set,(uintptr_t)np_gte_intpl_begin,
-        (uintptr_t)np_gte_intpl_compile,(uintptr_t)np_gte_intpl_signed,
-        (uintptr_t)np_gte_intpl_clamp,(uintptr_t)np_gte_intpl_end);
+    error=np_gte_native_three_plan(&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     /* Native/file launches use the per-game compatibility selection.
      * Legacy diagnostic modes retain the original exact-check behavior. */
