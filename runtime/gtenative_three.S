@@ -937,9 +937,9 @@ proj_208aa4:
 proj_208aa8:
 .word 0x01a3682d /* retained 0x208aa8 */
 proj_208aac:
-.word 0x000c643b /* retained 0x208aac */
+j np_gte_screen_proj
 proj_208ab0:
-.word 0x000d6c3b /* retained 0x208ab0 */
+dsra $12,$12,16
 proj_208ab4:
 .word 0x3c0e8000 /* retained 0x208ab4 */
 proj_208ab8:
@@ -997,15 +997,15 @@ proj_208b1c:
 proj_208b20:
 .word 0x848200ec /* retained 0x208b20 */
 proj_208b24:
-.word 0x004b5818 /* retained 0x208b24 */
+lw $v1,240($a0)
 proj_208b28:
-.word 0x8c8300f0 /* retained 0x208b28 */
+bnez $v0,np_gte_depth_nonzero
 proj_208b2c:
-.word 0x0163582d /* retained 0x208b2c */
+nop
 proj_208b30:
-.word 0xac8b0060 /* retained 0x208b30 */
+sw $v1,96($a0)
 proj_208b34:
-.word 0x000b5b3b /* retained 0x208b34 */
+dsra $11,$v1,12
 proj_208b38:
 .word 0x24031000 /* retained 0x208b38 */
 proj_208b3c:
@@ -1800,9 +1800,9 @@ proj_sf0_0_208aa4:
 proj_sf0_0_208aa8:
 .word 0x01a3682d /* retained 0x208aa8 */
 proj_sf0_0_208aac:
-.word 0x000c643b /* retained 0x208aac */
+j np_gte_screen_proj_sf0_0
 proj_sf0_0_208ab0:
-.word 0x000d6c3b /* retained 0x208ab0 */
+dsra $12,$12,16
 proj_sf0_0_208ab4:
 .word 0x3c0e8000 /* retained 0x208ab4 */
 proj_sf0_0_208ab8:
@@ -1860,15 +1860,15 @@ proj_sf0_0_208b1c:
 proj_sf0_0_208b20:
 .word 0x848200ec /* retained 0x208b20 */
 proj_sf0_0_208b24:
-.word 0x004b5818 /* retained 0x208b24 */
+lw $v1,240($a0)
 proj_sf0_0_208b28:
-.word 0x8c8300f0 /* retained 0x208b28 */
+bnez $v0,np_gte_depth_nonzero
 proj_sf0_0_208b2c:
-.word 0x0163582d /* retained 0x208b2c */
+nop
 proj_sf0_0_208b30:
-.word 0xac8b0060 /* retained 0x208b30 */
+sw $v1,96($a0)
 proj_sf0_0_208b34:
-.word 0x000b5b3b /* retained 0x208b34 */
+dsra $11,$v1,12
 proj_sf0_0_208b38:
 .word 0x24031000 /* retained 0x208b38 */
 proj_sf0_0_208b3c:
@@ -2164,9 +2164,9 @@ proj_sf0_1_208aa4:
 proj_sf0_1_208aa8:
 .word 0x01a3682d /* retained 0x208aa8 */
 proj_sf0_1_208aac:
-.word 0x000c643b /* retained 0x208aac */
+j np_gte_screen_proj_sf0_1
 proj_sf0_1_208ab0:
-.word 0x000d6c3b /* retained 0x208ab0 */
+dsra $12,$12,16
 proj_sf0_1_208ab4:
 .word 0x3c0e8000 /* retained 0x208ab4 */
 proj_sf0_1_208ab8:
@@ -2224,15 +2224,15 @@ proj_sf0_1_208b1c:
 proj_sf0_1_208b20:
 .word 0x848200ec /* retained 0x208b20 */
 proj_sf0_1_208b24:
-.word 0x004b5818 /* retained 0x208b24 */
+lw $v1,240($a0)
 proj_sf0_1_208b28:
-.word 0x8c8300f0 /* retained 0x208b28 */
+bnez $v0,np_gte_depth_nonzero
 proj_sf0_1_208b2c:
-.word 0x0163582d /* retained 0x208b2c */
+nop
 proj_sf0_1_208b30:
-.word 0xac8b0060 /* retained 0x208b30 */
+sw $v1,96($a0)
 proj_sf0_1_208b34:
-.word 0x000b5b3b /* retained 0x208b34 */
+dsra $11,$v1,12
 proj_sf0_1_208b38:
 .word 0x24031000 /* retained 0x208b38 */
 proj_sf0_1_208b3c:
@@ -2540,9 +2540,9 @@ hot_208aa4:
 hot_208aa8:
 .word 0x01a3682d
 hot_208aac:
-.word 0x000c643b
+j np_gte_screen_hot
 hot_208ab0:
-.word 0x000d6c3b
+dsra $12,$12,16
 hot_208ab4:
 .word 0x3c0e8000
 hot_208ab8:
@@ -2600,15 +2600,15 @@ hot_208b1c:
 hot_208b20:
 .word 0x848200ec
 hot_208b24:
-.word 0x004b5818
+lw $v1,240($a0)
 hot_208b28:
-.word 0x8c8300f0
+bnez $v0,np_gte_depth_nonzero
 hot_208b2c:
-.word 0x0163582d
+nop
 hot_208b30:
-.word 0xac8b0060
+sw $v1,96($a0)
 hot_208b34:
-.word 0x000b5b3b
+dsra $11,$v1,12
 hot_208b38:
 .word 0x24031000
 hot_208b3c:
@@ -2652,5 +2652,375 @@ lui $v0,0x8002
 or $at,$at,$v0
 j hot_208a8c
 nop
+
+.balign 16
+.globl np_gte_compile_nclip
+np_gte_compile_nclip:
+la $a0,np_gte_nclip
+j 0x206c5c
+nop
+.globl np_gte_nclip
+np_gte_nclip:
+.word 0x84880030
+.word 0x84890032
+.word 0x848a0034
+.word 0x848b0036
+.word 0x848c0038
+.word 0x848d003a
+.word 0x010b0018
+.word 0x710d0018
+.word 0x714d0000
+.word 0x71490020
+.word 0x71897000
+.word 0x718b7820
+pmfhl.lw $14
+pcpyud $15,$14,$14
+dsubu $24,$14,$15
+sw $24,96($a0)
+dsra $v0,$24,31
+dsra32 $v1,$24,31
+xor $v0,$v0,$v1
+andi $v1,$v1,0x8000
+lui $at,0x8001
+subu $at,$at,$v1
+movz $at,$zero,$v0
+jr $ra
+sw $at,252($a0)
+.globl np_gte_screen_native
+np_gte_screen_native:
+dsra $13,$13,16
+li $v0,-1024
+li $v1,1023
+slt $15,$12,$v0
+bnez $15,np_gte_screen_native_xneg
+slt $14,$v1,$12
+bnez $14,np_gte_screen_native_xpos
+slt $15,$13,$v0
+np_gte_screen_native_y:
+bnez $15,np_gte_screen_native_yneg
+slt $14,$v1,$13
+bnez $14,np_gte_screen_native_ypos
+sh $12,48($a1)
+np_gte_screen_native_store_y:
+j 0x208b10
+sh $13,50($a1)
+np_gte_screen_native_xneg:
+slti $15,$12,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v0
+b np_gte_screen_native_y
+slt $15,$13,$v0
+np_gte_screen_native_xpos:
+ori $15,$zero,32767
+slt $15,$15,$12
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v1
+b np_gte_screen_native_y
+slt $15,$13,$v0
+np_gte_screen_native_yneg:
+slti $15,$13,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v0
+b np_gte_screen_native_store_y
+sh $12,48($a1)
+np_gte_screen_native_ypos:
+ori $15,$zero,32767
+slt $15,$15,$13
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v1
+b np_gte_screen_native_store_y
+nop
+.globl np_gte_screen_proj
+np_gte_screen_proj:
+dsra $13,$13,16
+li $v0,-1024
+li $v1,1023
+slt $15,$12,$v0
+bnez $15,np_gte_screen_proj_xneg
+slt $14,$v1,$12
+bnez $14,np_gte_screen_proj_xpos
+slt $15,$13,$v0
+np_gte_screen_proj_y:
+bnez $15,np_gte_screen_proj_yneg
+slt $14,$v1,$13
+bnez $14,np_gte_screen_proj_ypos
+sh $12,48($a1)
+np_gte_screen_proj_store_y:
+j proj_208b10
+sh $13,50($a1)
+np_gte_screen_proj_xneg:
+slti $15,$12,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v0
+b np_gte_screen_proj_y
+slt $15,$13,$v0
+np_gte_screen_proj_xpos:
+ori $15,$zero,32767
+slt $15,$15,$12
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v1
+b np_gte_screen_proj_y
+slt $15,$13,$v0
+np_gte_screen_proj_yneg:
+slti $15,$13,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v0
+b np_gte_screen_proj_store_y
+sh $12,48($a1)
+np_gte_screen_proj_ypos:
+ori $15,$zero,32767
+slt $15,$15,$13
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v1
+b np_gte_screen_proj_store_y
+nop
+.globl np_gte_screen_proj_sf0_0
+np_gte_screen_proj_sf0_0:
+dsra $13,$13,16
+li $v0,-1024
+li $v1,1023
+slt $15,$12,$v0
+bnez $15,np_gte_screen_proj_sf0_0_xneg
+slt $14,$v1,$12
+bnez $14,np_gte_screen_proj_sf0_0_xpos
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_0_y:
+bnez $15,np_gte_screen_proj_sf0_0_yneg
+slt $14,$v1,$13
+bnez $14,np_gte_screen_proj_sf0_0_ypos
+sh $12,48($a1)
+np_gte_screen_proj_sf0_0_store_y:
+j proj_sf0_0_208b10
+sh $13,50($a1)
+np_gte_screen_proj_sf0_0_xneg:
+slti $15,$12,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v0
+b np_gte_screen_proj_sf0_0_y
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_0_xpos:
+ori $15,$zero,32767
+slt $15,$15,$12
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v1
+b np_gte_screen_proj_sf0_0_y
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_0_yneg:
+slti $15,$13,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v0
+b np_gte_screen_proj_sf0_0_store_y
+sh $12,48($a1)
+np_gte_screen_proj_sf0_0_ypos:
+ori $15,$zero,32767
+slt $15,$15,$13
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v1
+b np_gte_screen_proj_sf0_0_store_y
+nop
+.globl np_gte_screen_proj_sf0_1
+np_gte_screen_proj_sf0_1:
+dsra $13,$13,16
+li $v0,-1024
+li $v1,1023
+slt $15,$12,$v0
+bnez $15,np_gte_screen_proj_sf0_1_xneg
+slt $14,$v1,$12
+bnez $14,np_gte_screen_proj_sf0_1_xpos
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_1_y:
+bnez $15,np_gte_screen_proj_sf0_1_yneg
+slt $14,$v1,$13
+bnez $14,np_gte_screen_proj_sf0_1_ypos
+sh $12,48($a1)
+np_gte_screen_proj_sf0_1_store_y:
+j proj_sf0_1_208b10
+sh $13,50($a1)
+np_gte_screen_proj_sf0_1_xneg:
+slti $15,$12,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v0
+b np_gte_screen_proj_sf0_1_y
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_1_xpos:
+ori $15,$zero,32767
+slt $15,$15,$12
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v1
+b np_gte_screen_proj_sf0_1_y
+slt $15,$13,$v0
+np_gte_screen_proj_sf0_1_yneg:
+slti $15,$13,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v0
+b np_gte_screen_proj_sf0_1_store_y
+sh $12,48($a1)
+np_gte_screen_proj_sf0_1_ypos:
+ori $15,$zero,32767
+slt $15,$15,$13
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v1
+b np_gte_screen_proj_sf0_1_store_y
+nop
+.globl np_gte_screen_hot
+np_gte_screen_hot:
+dsra $13,$13,16
+li $v0,-1024
+li $v1,1023
+slt $15,$12,$v0
+bnez $15,np_gte_screen_hot_xneg
+slt $14,$v1,$12
+bnez $14,np_gte_screen_hot_xpos
+slt $15,$13,$v0
+np_gte_screen_hot_y:
+bnez $15,np_gte_screen_hot_yneg
+slt $14,$v1,$13
+bnez $14,np_gte_screen_hot_ypos
+sh $12,48($a1)
+np_gte_screen_hot_store_y:
+j hot_208b10
+sh $13,50($a1)
+np_gte_screen_hot_xneg:
+slti $15,$12,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v0
+b np_gte_screen_hot_y
+slt $15,$13,$v0
+np_gte_screen_hot_xpos:
+ori $15,$zero,32767
+slt $15,$15,$12
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,16384
+or $15,$15,$14
+or $at,$at,$15
+move $12,$v1
+b np_gte_screen_hot_y
+slt $15,$13,$v0
+np_gte_screen_hot_yneg:
+slti $15,$13,-32768
+sll $15,$15,15
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v0
+b np_gte_screen_hot_store_y
+sh $12,48($a1)
+np_gte_screen_hot_ypos:
+ori $15,$zero,32767
+slt $15,$15,$13
+sll $15,$15,16
+lui $14,0x8000
+ori $14,$14,8192
+or $15,$15,$14
+or $at,$at,$15
+move $13,$v1
+b np_gte_screen_hot_store_y
+nop
+.globl np_gte_depth_native
+np_gte_depth_native:
+lw $v1,240($a0)
+bnez $v0,np_gte_depth_nonzero
+nop
+sw $v1,96($a0)
+dsra $11,$v1,12
+b np_gte_depth_clamp
+nop
+.globl np_gte_depth_nonzero
+np_gte_depth_nonzero:
+mult $v0,$11
+pmfhl.lw $11
+daddu $11,$11,$v1
+sw $11,96($a0)
+dsra $v0,$11,31
+dsra32 $v1,$11,31
+xor $v0,$v0,$v1
+andi $v1,$v1,0x8000
+lui $14,0x8001
+subu $14,$14,$v1
+movz $14,$zero,$v0
+or $at,$at,$14
+dsra $11,$11,12
+np_gte_depth_clamp:
+.word 0x24031000
+.word 0x0160702a
+.word 0x006b782a
+.word 0x000e580b
+.word 0x006f580b
+.word 0x01cf7025
+.word 0x000e7300
+.word 0x002e0825
+.word 0xac8b0020
+.word 0x03e00008
+.word 0xac8100fc
 .globl np_gte_native_three_end
 np_gte_native_three_end:
