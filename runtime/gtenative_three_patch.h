@@ -1,6 +1,9 @@
 #ifndef NP_GTE_NATIVE_THREE_PATCH_H
 #define NP_GTE_NATIVE_THREE_PATCH_H
 #include "psxcore_patch.h"
+#ifndef NP_GTE_MATRIX_MODES
+#define NP_GTE_MATRIX_MODES 0
+#endif
 #ifndef NP_GTE_NATIVE_THREE_EXTERNAL_SYMBOLS
 extern void np_gte_native_three_begin(void),np_gte_native_three_end(void);
 extern void np_gte_avsz_tail(void),np_gte_avsz_tail_end(void);
@@ -9,6 +12,9 @@ extern void np_gte_compile_rtpt(void);
 extern void np_gte_compile_gpf(void);
 extern void np_gte_compile_gpl(void);
 extern void np_gte_compile_intpl(void);
+#if NP_GTE_MATRIX_MODES
+extern void np_gte_matrix_compile(void);
+#endif
 extern void np_gte_compile_nclip(void);
 extern void np_gte_screen_native(void);
 extern void np_gte_depth_native(void);
@@ -16,10 +22,14 @@ extern void np_gte_near_template(void),np_gte_near_template_end(void);
 #endif
 static inline const char *np_gte_native_three_plan(NpPatchSet *set) {
  const uintptr_t begin=(uintptr_t)np_gte_native_three_begin,end=(uintptr_t)np_gte_native_three_end;
- if(!set || set->count>NP_PATCH_LIMIT-11)return "gte-native-three-capacity";
+ if(!set || set->count>NP_PATCH_LIMIT-(11+(NP_GTE_MATRIX_MODES?1:0)))return "gte-native-three-capacity";
  if(begin!=0xece00 || end<=begin || end>0xef000 || ((begin|end)&3))return "gte-native-three-resident";
- const uintptr_t entries[]={(uintptr_t)np_gte_compile_rtps,(uintptr_t)np_gte_compile_rtpt,(uintptr_t)np_gte_compile_gpf,(uintptr_t)np_gte_compile_gpl,(uintptr_t)np_gte_compile_intpl,(uintptr_t)np_gte_avsz_tail,(uintptr_t)np_gte_compile_nclip,(uintptr_t)np_gte_screen_native,(uintptr_t)np_gte_depth_native};
- for(unsigned i=0;i<9;++i)if(entries[i]<begin || entries[i]>=end || (entries[i]&3))return "gte-native-three-entry";
+ const uintptr_t entries[]={(uintptr_t)np_gte_compile_rtps,(uintptr_t)np_gte_compile_rtpt,(uintptr_t)np_gte_compile_gpf,(uintptr_t)np_gte_compile_gpl,(uintptr_t)np_gte_compile_intpl,(uintptr_t)np_gte_avsz_tail,(uintptr_t)np_gte_compile_nclip,(uintptr_t)np_gte_screen_native,(uintptr_t)np_gte_depth_native
+#if NP_GTE_MATRIX_MODES
+ ,(uintptr_t)np_gte_matrix_compile
+#endif
+ };
+ for(unsigned i=0;i<sizeof(entries)/sizeof(entries[0]);++i)if(entries[i]<begin || entries[i]>=end || (entries[i]&3))return "gte-native-three-entry";
  if((uintptr_t)np_gte_avsz_tail_end-(uintptr_t)np_gte_avsz_tail!=92)return "gte-native-three-avsz";
  const char *error;
  static const unsigned char expected0[]={0x21,0x0,0x2,0x3c,0x15,0x1,0x0,0x10};
@@ -44,6 +54,10 @@ static inline const char *np_gte_native_three_plan(NpPatchSet *set) {
  error=np_patch_add(set,0x208aac,mac0_expected_208aac,(const uint32_t[]){0x08000000u|((uint32_t)np_gte_screen_native>>2),0x000c643bu},8);if(error)return error;
  static const uint32_t mac0_expected_208b20[]={0x848200ecu,0x004b5818u};
  error=np_patch_add(set,0x208b20,mac0_expected_208b20,(const uint32_t[]){0x08000000u|((uint32_t)np_gte_depth_native>>2),0x848200ecu},8);if(error)return error;
+#if NP_GTE_MATRIX_MODES
+ static const uint32_t matrix_expected[]={0x15600009u,0x26310004u};
+ error=np_patch_add(set,0x206c10,matrix_expected,(const uint32_t[]){0x08000000u|((uint32_t)np_gte_matrix_compile>>2),0},8);if(error)return error;
+#endif
  return NULL;
 }
 #endif

@@ -25,9 +25,12 @@ EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h
 NP_PACKET_FIXED_PADDING ?= 1
+# Special matrix/far-color correctness paths await affected-mode timing.
+NP_GTE_MATRIX_MODES ?= 0
 EE_OBJS += loaderretire.o gamepatches/rayman2.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_CFLAGS += -DNP_PACKET_FIXED_PADDING=$(NP_PACKET_FIXED_PADDING)
+EE_CFLAGS += -DNP_GTE_MATRIX_MODES=$(NP_GTE_MATRIX_MODES)
 NP_MEMORY_ACCESS_ADAPTER ?= 1
 NP_MEMORY_ACCESS_TRACE ?= 0
 NP_MEMORY_SCRATCH_FASTPATH ?= 1

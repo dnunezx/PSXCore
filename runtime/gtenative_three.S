@@ -3022,5 +3022,459 @@ np_gte_depth_clamp:
 .word 0xac8b0020
 .word 0x03e00008
 .word 0xac8100fc
+
+#if NP_GTE_MATRIX_MODES
+
+.balign 16
+.globl np_gte_matrix_compile
+np_gte_matrix_compile:
+li $v0,3
+beq $8,$v0,matrix_choose_special
+nop
+li $v0,2
+beq $10,$v0,matrix_choose_far
+nop
+li $a0,0x209c70
+b matrix_choose_done
+nop
+matrix_choose_special:
+li $v0,2
+beq $10,$v0,matrix_choose_both
+nop
+la $a0,np_gte_matrix_entries
+b matrix_choose_done
+nop
+matrix_choose_far:
+la $a0,np_gte_far_entries
+b matrix_choose_done
+nop
+matrix_choose_both:
+la $a0,np_gte_matrix_far_entries
+matrix_choose_done:
+sll $v0,$11,5
+sll $v1,$a2,4
+or $v0,$v0,$v1
+addu $a0,$a0,$v0
+j 0x206c5c
+addiu $s1,$s1,4
+.globl np_gte_matrix_entries
+np_gte_matrix_entries:
+li $at,-32768
+li $25,0
+j matrix_body
+nop
+li $at,0
+li $25,0
+j matrix_body
+nop
+li $at,-32768
+li $25,12
+j matrix_body
+nop
+li $at,0
+li $25,12
+j matrix_body
+nop
+matrix_body:
+lbu $9,24($a0)
+sll $9,$9,4
+subu $8,$zero,$9
+lh $10,32($a0)
+lh $11,132($a0)
+move $12,$11
+move $13,$11
+lh $14,136($a0)
+move $15,$14
+matrix_209cc8:
+.word 0x14c00000 | (((matrix_209ce0 - . - 4) / 4) & 0xffff)
+matrix_209ccc:
+move $24,$14
+matrix_209cd0:
+.word 0x84820024
+matrix_209cd4:
+.word 0x84830028
+matrix_209cd8:
+.word 0x10000000 | (((matrix_209cec - . - 4) / 4) & 0xffff)
+matrix_209cdc:
+.word 0x8485002c
+matrix_209ce0:
+.word 0x84c20000
+matrix_209ce4:
+.word 0x84c30002
+matrix_209ce8:
+.word 0x84c50004
+matrix_209cec:
+.word 0x01020018
+matrix_209cf0:
+.word 0x71620018
+matrix_209cf4:
+.word 0x71230000
+matrix_209cf8:
+.word 0x71830020
+matrix_209cfc:
+.word 0x71450000
+matrix_209d00:
+.word 0x71a50020
+matrix_209d04:
+.word 0x70004030
+matrix_209d08:
+.word 0x71084ba9
+matrix_209d0c:
+.word 0x01c20018
+matrix_209d10:
+.word 0x71e30000
+matrix_209d14:
+.word 0x73050000
+matrix_209d18:
+.word 0x0000582d
+matrix_209d1c:
+.word 0x0000602d
+matrix_209d20:
+.word 0x70005030
+matrix_209d24:
+.word 0x00000000
+matrix_209d28:
+.word 0x10e00000 | (((matrix_209d3c - . - 4) / 4) & 0xffff)
+matrix_209d2c:
+.word 0x0000682d
+matrix_209d30:
+.word 0x8ceb0000
+matrix_209d34:
+.word 0x8cec0004
+matrix_209d38:
+.word 0x8ced0008
+matrix_209d3c:
+.word 0x000b5b38
+matrix_209d40:
+.word 0x000c6338
+matrix_209d44:
+.word 0x000d6b38
+matrix_209d48:
+.word 0x010b402c
+matrix_209d4c:
+.word 0x012c482c
+matrix_209d50:
+.word 0x13200000 | (((matrix_209d64 - . - 4) / 4) & 0xffff)
+matrix_209d54:
+.word 0x014d502c
+matrix_209d58:
+.word 0x0008433b
+matrix_209d5c:
+.word 0x00094b3b
+matrix_209d60:
+.word 0x000a533b
+matrix_209d64:
+sll $8,$8,0
+sll $9,$9,0
+sll $10,$10,0
+sw $8,100($a0)
+matrix_209d68:
+.word 0xac890068
+matrix_209d6c:
+.word 0xac8a006c
+matrix_209d70:
+.word 0x0020102d
+matrix_209d74:
+.word 0x24037fff
+matrix_209d78:
+.word 0x0000082d
+matrix_209d7c:
+.word 0x0102282a
+matrix_209d80:
+.word 0x0068302a
+matrix_209d84:
+.word 0x0045400b
+matrix_209d88:
+.word 0x0066400b
+matrix_209d8c:
+.word 0x00a62825
+matrix_209d90:
+.word 0x00052e00
+matrix_209d94:
+.word 0x00250825
+matrix_209d98:
+.word 0x0122282a
+matrix_209d9c:
+.word 0x0069302a
+matrix_209da0:
+.word 0x0045480b
+matrix_209da4:
+.word 0x0066480b
+matrix_209da8:
+.word 0x00a62825
+matrix_209dac:
+.word 0x00052dc0
+matrix_209db0:
+.word 0x00250825
+matrix_209db4:
+.word 0x0142282a
+matrix_209db8:
+.word 0x006a302a
+matrix_209dbc:
+.word 0x0045500b
+matrix_209dc0:
+.word 0x0066500b
+matrix_209dc4:
+.word 0x00a62825
+matrix_209dc8:
+.word 0x00052d80
+matrix_209dcc:
+.word 0x00250825
+matrix_209dd0:
+.word 0xac880024
+matrix_209dd4:
+.word 0xac890028
+matrix_209dd8:
+.word 0xac8a002c
+matrix_209ddc:
+.word 0x3c027f87
+matrix_209de0:
+.word 0x3442e000
+matrix_209de4:
+.word 0x3c038000
+matrix_209de8:
+.word 0x00411024
+matrix_209dec:
+.word 0x0002180a
+matrix_209df0:
+.word 0x00230825
+matrix_209df4:
+.word 0x03e00008
+matrix_209df8:
+.word 0xac8100fc
+.globl np_gte_far_entries
+np_gte_far_entries:
+li $at,-32768
+li $25,0
+j far_load
+nop
+li $at,0
+li $25,0
+j far_load
+nop
+li $at,-32768
+li $25,12
+j far_load
+nop
+li $at,0
+li $25,12
+j far_load
+nop
+.globl np_gte_matrix_far_entries
+np_gte_matrix_far_entries:
+li $at,-32768
+li $25,0
+j far_special_load
+nop
+li $at,0
+li $25,0
+j far_special_load
+nop
+li $at,-32768
+li $25,12
+j far_special_load
+nop
+li $at,0
+li $25,12
+j far_special_load
+nop
+far_load:
+far_matrix_209ca8:
+.word 0x84a80000
+far_matrix_209cac:
+.word 0x84a90002
+far_matrix_209cb0:
+.word 0x84aa0004
+far_matrix_209cb4:
+.word 0x84ab0006
+far_matrix_209cb8:
+.word 0x84ac0008
+far_matrix_209cbc:
+.word 0x84ad000a
+far_matrix_209cc0:
+.word 0x84ae000c
+far_matrix_209cc4:
+.word 0x84af000e
+lh $24,16($a1)
+b far_vector
+nop
+far_special_load:
+lbu $9,24($a0)
+sll $9,$9,4
+subu $8,$zero,$9
+lh $10,32($a0)
+lh $11,132($a0)
+move $12,$11
+move $13,$11
+lh $14,136($a0)
+move $15,$14
+move $24,$14
+far_vector:
+bnez $a2,far_packed_vector
+nop
+lh $v0,36($a0)
+lh $v1,40($a0)
+b far_products
+lh $a1,44($a0)
+far_packed_vector:
+lh $v0,0($a2)
+lh $v1,2($a2)
+lh $a1,4($a2)
+far_products:
+mult $8,$v0
+mult1 $11,$v0
+pmfhl.lw $8
+pcpyud $11,$8,$8
+mult $14,$v0
+pmfhl.lw $14
+move $a3,$at
+move $a2,$zero
+lw $v0,212($a0)
+dsll $v0,$v0,12
+daddu $8,$8,$v0
+dsra32 $at,$8,11
+slt $v0,$zero,$at
+slti $at,$at,-1
+sll $v0,$v0,30
+or $a2,$a2,$v0
+sll $at,$at,27
+or $a2,$a2,$at
+dsrav $8,$8,$25
+sll $8,$8,0
+slti $v0,$8,-32768
+li $at,32767
+slt $at,$at,$8
+or $v0,$v0,$at
+sll $v0,$v0,24
+or $a2,$a2,$v0
+lw $v0,216($a0)
+dsll $v0,$v0,12
+daddu $11,$11,$v0
+dsra32 $at,$11,11
+slt $v0,$zero,$at
+slti $at,$at,-1
+sll $v0,$v0,29
+or $a2,$a2,$v0
+sll $at,$at,26
+or $a2,$a2,$at
+dsrav $11,$11,$25
+sll $11,$11,0
+slti $v0,$11,-32768
+li $at,32767
+slt $at,$at,$11
+or $v0,$v0,$at
+sll $v0,$v0,23
+or $a2,$a2,$v0
+lw $v0,220($a0)
+dsll $v0,$v0,12
+daddu $14,$14,$v0
+dsra32 $at,$14,11
+slt $v0,$zero,$at
+slti $at,$at,-1
+sll $v0,$v0,28
+or $a2,$a2,$v0
+sll $at,$at,25
+or $a2,$a2,$at
+dsrav $14,$14,$25
+sll $14,$14,0
+slti $v0,$14,-32768
+li $at,32767
+slt $at,$at,$14
+or $v0,$v0,$at
+sll $v0,$v0,22
+or $a2,$a2,$v0
+mult $9,$v1
+mult1 $12,$v1
+madd $10,$a1
+madd1 $13,$a1
+pmfhl.lw $8
+pcpyud $9,$8,$8
+mult $15,$v1
+madd $24,$a1
+pmfhl.lw $10
+dsrav $8,$8,$25
+dsrav $9,$9,$25
+dsrav $10,$10,$25
+sll $8,$8,0
+sll $9,$9,0
+sll $10,$10,0
+move $at,$a3
+far_publish_209d64:
+.word 0xac880064
+far_publish_209d68:
+.word 0xac890068
+far_publish_209d6c:
+.word 0xac8a006c
+far_publish_209d70:
+.word 0x0020102d
+far_publish_209d74:
+.word 0x24037fff
+far_publish_209d78:
+move $at,$a2
+far_publish_209d7c:
+.word 0x0102282a
+far_publish_209d80:
+.word 0x0068302a
+far_publish_209d84:
+.word 0x0045400b
+far_publish_209d88:
+.word 0x0066400b
+far_publish_209d8c:
+.word 0x00a62825
+far_publish_209d90:
+.word 0x00052e00
+far_publish_209d94:
+.word 0x00250825
+far_publish_209d98:
+.word 0x0122282a
+far_publish_209d9c:
+.word 0x0069302a
+far_publish_209da0:
+.word 0x0045480b
+far_publish_209da4:
+.word 0x0066480b
+far_publish_209da8:
+.word 0x00a62825
+far_publish_209dac:
+.word 0x00052dc0
+far_publish_209db0:
+.word 0x00250825
+far_publish_209db4:
+.word 0x0142282a
+far_publish_209db8:
+.word 0x006a302a
+far_publish_209dbc:
+.word 0x0045500b
+far_publish_209dc0:
+.word 0x0066500b
+far_publish_209dc4:
+.word 0x00a62825
+far_publish_209dc8:
+.word 0x00052d80
+far_publish_209dcc:
+.word 0x00250825
+far_publish_209dd0:
+.word 0xac880024
+far_publish_209dd4:
+.word 0xac890028
+far_publish_209dd8:
+.word 0xac8a002c
+far_publish_209ddc:
+.word 0x3c027f87
+far_publish_209de0:
+.word 0x3442e000
+far_publish_209de4:
+.word 0x3c038000
+far_publish_209de8:
+.word 0x00411024
+far_publish_209dec:
+.word 0x0002180a
+far_publish_209df0:
+.word 0x00230825
+far_publish_209df4:
+.word 0x03e00008
+far_publish_209df8:
+.word 0xac8100fc
+#endif
 .globl np_gte_native_three_end
 np_gte_native_three_end:
