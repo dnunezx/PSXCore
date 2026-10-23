@@ -610,6 +610,17 @@ const char *np_file_prepare(int argc,char **argv,NpFileLaunchRequest *r) {
             }
             overrides=1;
         }
+        else if(!strcmp(argv[i],"--hdtv-fix") || !strcmp(argv[i],"--no-hdtv-fix")) {
+            r->options.mode=NP_COMPAT_CUSTOM;
+            if(!strcmp(argv[i],"--hdtv-fix")) {
+                r->options.enable|=NP_FIX_HDTV;
+                r->options.disable&=~NP_FIX_HDTV;
+            } else {
+                r->options.disable|=NP_FIX_HDTV;
+                r->options.enable&=~NP_FIX_HDTV;
+            }
+            overrides=1;
+        }
         else return "file-launch-arguments";
     }
     r->disc.backend=selected_backend;r->saves.backend=selected_save_backend?selected_save_backend:selected_backend;
