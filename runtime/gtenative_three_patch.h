@@ -2,13 +2,13 @@
 #define NP_GTE_NATIVE_THREE_PATCH_H
 #include "psxcore_patch.h"
 #ifndef NP_MDEC_ZERO_SCALE
-#define NP_MDEC_ZERO_SCALE 0
+#define NP_MDEC_ZERO_SCALE NP_MDEC_BLOCK_FASTPATH
 #endif
 #if NP_MDEC_ZERO_SCALE && !NP_MDEC_BLOCK_FASTPATH
 #error "NP_MDEC_ZERO_SCALE requires NP_MDEC_BLOCK_FASTPATH"
 #endif
 #ifndef NP_GTE_MATRIX_MODES
-#define NP_GTE_MATRIX_MODES 0
+#define NP_GTE_MATRIX_MODES 1
 #endif
 #ifndef NP_GTE_NATIVE_THREE_EXTERNAL_SYMBOLS
 extern void np_gte_native_three_begin(void),np_gte_native_three_end(void);

@@ -25,8 +25,8 @@ EE_OBJS += gp1idle.o
 main.o: gp1idle_patch.h
 main.o compat.o file_patch.o patch.o runtime_corrections.o: ../../include/psxcore_patch.h
 NP_PACKET_FIXED_PADDING ?= 1
-# Special matrix/far-color correctness paths await affected-mode timing.
-NP_GTE_MATRIX_MODES ?= 0
+# Compile dedicated native helpers for special matrix/far-color modes.
+NP_GTE_MATRIX_MODES ?= 1
 EE_OBJS += loaderretire.o gamepatches/rayman2.o
 EE_CFLAGS = -O2 -Wall -Wextra -Werror
 EE_CFLAGS += -DNP_PACKET_FIXED_PADDING=$(NP_PACKET_FIXED_PADDING)
@@ -60,8 +60,8 @@ NP_INTERLACE_BUFFERED_PRESENT ?= 1
 NP_GPU_DMA_RASTER_SPLIT ?= 1
 NP_GPU_DMA_INLINE_ACCOUNTING ?= 1
 NP_MDEC_BLOCK_FASTPATH ?= 1
-# Native zero-scale decoding awaits affected-scene performance acceptance.
-NP_MDEC_ZERO_SCALE ?= 0
+# Native zero-scale decoding follows the optimized block decoder.
+NP_MDEC_ZERO_SCALE ?= $(NP_MDEC_BLOCK_FASTPATH)
 NP_RASTER_COST_FASTPATH ?= 1
 # Include optional audio-rate feedback; launch selection defaults off.
 NP_PCM_BUFFER_RATE ?= 1
