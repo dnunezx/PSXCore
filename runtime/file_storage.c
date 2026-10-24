@@ -62,8 +62,7 @@ static const char *storage_driver(uint32_t backend) {
 }
 static int load(const char *name,const unsigned char *bytes,unsigned size,const char *args,unsigned length) {
     int result=-1;
-    char operation[96];snprintf(operation,sizeof(operation),"Load IOP module: %s",name);
-    np_startup_operation(operation);
+    np_startup_operationf("Load IOP module: %s",name);
     storage_trace("PSXCORE file-module=%s phase=begin\n",name);
     int id=SifExecModuleBuffer((void *)bytes,size,length,args,&result);
     storage_trace("PSXCORE file-module=%s id=%d result=%d\n",name,id,result);
@@ -229,15 +228,21 @@ static void serial(int fd,uint64_t bytes,char out[16]) {
 }
 /* Fixed-size header and bounded ISO metadata only. No full-image hash or
  * per-game metadata sidecar is required before or after the IOP reset. */
+#if NP_STARTUP_DIAGNOSTICS
 static char inspect_context[137];
+#endif
 static const char *inspect(const char *path,NpFileLaunchRequest *r,int initial) {
     iox_stat_t before,after;unsigned char head[NP_FILE_HEADER_HASH_BYTES];
     memset(&before,0,sizeof(before));
+#if NP_STARTUP_DIAGNOSTICS
     snprintf(inspect_context,sizeof(inspect_context),"%.68s",path);
+#endif
     np_startup_context("%.68s",path);
     int status=fileXioGetStat(path,&before);
     if(status<0 || !FIO_S_ISREG(before.mode)) {
+#if NP_STARTUP_DIAGNOSTICS
         snprintf(inspect_context,sizeof(inspect_context),"%.68s\nGetStat=%d mode=%08x",path,status,(unsigned)before.mode);
+#endif
         np_startup_context("%s",inspect_context);
         return status<0?"file-image-stat":"file-image-not-regular";
     }
@@ -331,7 +336,10 @@ static const char *select_initial_once(NpFileLaunchRequest *r,char selected[NP_F
     unsigned matches=0,endpoints=0;
     NpFileLaunchRequest chosen;
     char chosen_path[NP_FILE_PATH_BYTES+8]={0};
-    const char *failure=NULL;char failure_context[137]={0};
+    const char *failure=NULL;
+#if NP_STARTUP_DIAGNOSTICS
+    char failure_context[137]={0};
+#endif
     for(unsigned i=0;i<10;++i) {
         char root[8],path[NP_FILE_PATH_BYTES+8];
         snprintf(root,sizeof(root),"mass%u:",i);
@@ -341,7 +349,13 @@ static const char *select_initial_once(NpFileLaunchRequest *r,char selected[NP_F
         /* A supplied ID disambiguates partitions before touching their VCDs. */
         if(np_file_volume_id_present(r->disc_volume)) {
             const char *error=volume_check(root,candidate.disc_volume);
-            if(error){failure=error;snprintf(failure_context,sizeof(failure_context),"Volume %s did not match selected ID",root);continue;}
+            if(error){
+                failure=error;
+#if NP_STARTUP_DIAGNOSTICS
+                snprintf(failure_context,sizeof(failure_context),"Volume %s did not match selected ID",root);
+#endif
+                continue;
+            }
         }
         if(join(path,sizeof(path),root,r->disc_path))return "file-image-path";
         const char *error=inspect(path,&candidate,1);
@@ -349,7 +363,9 @@ static const char *select_initial_once(NpFileLaunchRequest *r,char selected[NP_F
             /* Preserve a substantive failure over another absent filename. */
             if(!failure || !strcmp(failure,"file-image-stat")) {
                 failure=error;
+#if NP_STARTUP_DIAGNOSTICS
                 memcpy(failure_context,inspect_context,sizeof(failure_context));
+#endif
             }
             continue;
         }
@@ -360,7 +376,9 @@ static const char *select_initial_once(NpFileLaunchRequest *r,char selected[NP_F
     }
     if(matches!=1) {
         if(!endpoints)return "file-image-endpoint-not-found";
+#if NP_STARTUP_DIAGNOSTICS
         if(failure_context[0])np_startup_context("%s",failure_context);
+#endif
         return failure?failure:"file-image-not-found-or-changed";
     }
     *r=chosen;memcpy(selected,chosen_path,strlen(chosen_path)+1);
@@ -677,17 +695,17 @@ const char *np_file_runtime_path(const NpFileLaunchRequest *r,const char *name,c
     return !mounted[0] || n<0 || (size_t)n>=size?"file-runtime-path":NULL;
 }
 int np_file_read_asset(const NpFileLaunchRequest *r,const char *name,void *target,unsigned bytes,const unsigned char expected[32]) {
-    char path[160],operation[96];iox_stat_t st;
+    char path[160];iox_stat_t st;
     if(np_file_runtime_path(r,name,path,sizeof(path))){np_startup_error("asset-path");return -1;}
-    snprintf(operation,sizeof(operation),"Check asset size: %s",name);np_startup_operation(operation);
+    np_startup_operationf("Check asset size: %s",name);
     np_startup_context("%s",path);
     int status=fileXioGetStat(path,&st);
     if(status<0){np_startup_context("%s stat=%d",path,status);np_startup_error("asset-stat");return -1;}
     if(st.hisize || st.size!=bytes){np_startup_context("%s size=%u:%u expected=%u",name,(unsigned)st.hisize,(unsigned)st.size,bytes);np_startup_error("asset-size");return -1;}
-    np_startup_done();snprintf(operation,sizeof(operation),"Open asset: %s",name);np_startup_operation(operation);
+    np_startup_done();np_startup_operationf("Open asset: %s",name);
     int fd=fileXioOpen(path,FIO_O_RDONLY,0);
     if(fd<0){np_startup_context("%s open=%d",path,fd);np_startup_error("asset-open");return -1;}
-    np_startup_done();snprintf(operation,sizeof(operation),"Read asset: %s",name);np_startup_operation(operation);
+    np_startup_done();np_startup_operationf("Read asset: %s",name);
     unsigned done=0;int result=0;
     while(done<bytes) {
         unsigned chunk=bytes-done;if(chunk>65536)chunk=65536;
@@ -697,11 +715,11 @@ int np_file_read_asset(const NpFileLaunchRequest *r,const char *name,void *targe
         done+=(unsigned)result;
     }
     if(done!=bytes){np_startup_context("%s read=%u/%u result=%d",name,done,bytes,result);np_startup_error("asset-read");}
-    else {np_startup_done();snprintf(operation,sizeof(operation),"Close asset: %s",name);np_startup_operation(operation);}
+    else {np_startup_done();np_startup_operationf("Close asset: %s",name);}
     int closed=fileXioClose(fd);
     if(done!=bytes)return -1;
     if(closed<0){np_startup_context("%s close=%d",name,closed);np_startup_error("asset-close");return -1;}
-    np_startup_done();snprintf(operation,sizeof(operation),"Verify SHA-256: %s",name);np_startup_operation(operation);
+    np_startup_done();np_startup_operationf("Verify SHA-256: %s",name);
     unsigned char hash[32];np_boot_sha256(target,bytes,hash);
     if(memcmp(hash,expected,32)){np_startup_error("asset-hash");return -1;}
     return 0;

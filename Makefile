@@ -85,7 +85,7 @@ runtime: | build
 	cp runtime/gamepatches/*.c build/runtime/gamepatches/
 	cp runtime/igrobserve.S runtime/igrobserve.h build/runtime/
 	cp src/hdtv.c runtime/hdtv.S build/runtime/
-	cp runtime/startup_diag.c runtime/startup_diag.h build/runtime/
+	cp runtime/startup_failure.c runtime/startup_diag.h build/runtime/
 	cp runtime/igrwait.S runtime/igrwait.h build/runtime/
 	cp runtime/igrquit.S runtime/igrquit.h build/runtime/
 	cp runtime/igrreturn.h runtime/igrmenu.h build/runtime/
