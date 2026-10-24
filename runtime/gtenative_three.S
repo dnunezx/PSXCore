@@ -2521,14 +2521,16 @@ hot_208a7c:
 hot_208a80:
 .word 0x01ab001b
 hot_208a84:
-mflo $11
+/* OFX is independent of the quotient. Issue its existing load while the
+ * native division is running; leave the second offset load shared below. */
+lw $12,224($a0)
 hot_208a88:
+mflo $11
 hot_208a8c:
 .word 0x010b0018
 hot_208a90:
 .word 0x712b0018
-hot_208a94:
-.word 0x8c8c00e0
+hot_208a94: /* OFX was already loaded. */
 hot_208a98:
 .word 0x8c8d00e4
 hot_208a9c:
@@ -2651,7 +2653,8 @@ ori $11,$11,0xffff
 lui $v0,0x8002
 or $at,$at,$v0
 j hot_208a8c
-nop
+/* Saturation bypasses division and supplies OFX in its old empty delay slot. */
+lw $12,224($a0)
 
 .balign 16
 .globl np_gte_compile_nclip
