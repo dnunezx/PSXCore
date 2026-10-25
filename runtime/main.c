@@ -1025,6 +1025,13 @@ int main(int argc,char **argv) {
     if(file_launch && np_file_storage_plan(file_request.runtime,&patch_set)) {
         trace("PSXCORE rejected=file-storage-patch-plan\n");goto rejected;
     }
+    /* Match POPStarter's USB stack allocation for native IOPCD's RPC thread.
+     * The separate filesystem worker does not enlarge this native stack. */
+    if(file_launch && file_request.environment==NP_ENV_PS2 &&
+       file_request.disc.backend==NP_FILE_BACKEND_USB &&
+       queue_word(0x2fb598,0x24020800,0x24024000)) {
+        trace("PSXCORE rejected=usb-iopcd-stack-patch-plan\n");goto rejected;
+    }
     error=np_runtime_correct(NP_RUNTIME_KNOWN,&patch_set);
     if(error){trace("PSXCORE rejected=%s\n",error);goto rejected;}
     if(native && install_clut_refresh()) {
